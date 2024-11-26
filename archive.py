@@ -130,13 +130,13 @@ def download_playlist(playlist_id, playlist_name, base_directory):
                 for entry in playlist_info['entries']:
                     video_url = f"https://www.youtube.com/watch?v={entry['id']}"
                     download_video_and_create_nfo(video_url, output_directory)
-                    time.sleep(10)
+                    time.sleep(10) # Delay between videos to avoid triggering YouTube login requests
         except Exception as e:
             print(f"Error occurred while downloading playlist {playlist_name}: {e}")
 
 def main():
     parser = argparse.ArgumentParser(description='Download YouTube playlists and save them in organized directories.')
-    parser.add_argument('json_file', help='Path to JSON file containing playlist IDs and names')
+    parser.add_argument('json_file', nargs='?', default='playlists.py', help='Path to JSON file containing playlist IDs and names')
     args = parser.parse_args()
 
     json_file = args.json_file
@@ -152,7 +152,8 @@ def main():
             print(f"Error reading JSON file: {e}")
             return
 
-    base_directory = Path('/mnt/media/YouTube')
+    # CHANGE PATH TO YOUR ARCHIVE
+    base_directory = Path('~/Videos/YouTube')
     base_directory.mkdir(parents=True, exist_ok=True)
 
     for playlist in playlists:
