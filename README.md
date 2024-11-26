@@ -45,7 +45,11 @@ Still in the `(venv)`, run `python archive.py` to begin archiving playlists
 ## Optional Settings
 - Optional arg: `python archive.py json_file /path/to/different/json` to specfify a different json file (good for tests)
 
-- The program sleeps 10 seconds between each video and 30 seconds between each playlist by default, to avoid YouTube blocking requests. These are editable at lines `133` and `167`
+- The program sleeps 10 seconds between each video and 30 seconds between each playlist by default, to avoid YouTube blocking requests. These are editable at lines `133` and `167`:
+```python
+time.sleep(10) # Delay between videos to avoid triggering YouTube login requests
+time.sleep(30)  # Extra delay between playlists to avoid triggering YouTube login requests
+```
 
 - Of course, all `ydl_opts` are fully editable:
 ```python
