@@ -66,12 +66,14 @@ def create_nfo_file(metadata, nfo_path):
         else "Unknown Year"
     )
     description = metadata.get("description", "Unknown Description")
+    video_id = metadata.get("id", "Unknown ID")
     nfo_content = f"""<episodedetails>
   <title>{title}</title>
   <studio>{channel}</studio>
   <releasedate>{formatted_date}</releasedate>
   <year>{upload_year}</year>
   <plot>{description}</plot>
+  <id>{video_id}</id>
 </episodedetails>
 """
     try:
@@ -86,12 +88,13 @@ def download_video_and_create_nfo(video_url, output_directory=None):
     if metadata is None:
         return
 
+    video_id = metadata.get("id", "unknown-id")
     title = metadata.get("title", "unknown-title")
     channel = metadata.get("uploader", "unknown-channel")
 
     safe_title = sanitize_filename(title)
     safe_channel = sanitize_filename(channel)
-    filename = f"{safe_title}_{safe_channel}"
+    filename = f{video_id}_{safe_title}_{safe_channel}"
 
     # If no output directory is provided, create a folder with the filename in the working directory
     if output_directory is None:
@@ -115,22 +118,50 @@ def download_video_and_create_nfo(video_url, output_directory=None):
         print(f"Downloaded video file not found for {video_url}.")
 
 def download_playlist(playlist_id, playlist_name, base_directory):
+    # Create the output directory for the playlist
     output_directory = Path(base_directory) / playlist_name
     output_directory.mkdir(parents=True, exist_ok=True)
 
+    # Define the archive file path for the playlist
+    archive_file = output_directory / ".archive.txt"
+
+    # Ensure the archive file exists
+    if not archive_file.exists():
+        archive_file.touch()  # Create an empty file
+
+    # Options for extracting the playlist info
     ydl_opts = {
-        'extract_flat': True,
-        'quiet': True,
+        'extract_flat': True,  # Extract metadata without downloading
+        'quiet': True,         # Suppress non-critical output
     }
     playlist_url = f'https://www.youtube.com/playlist?list={playlist_id}'
+
     with YoutubeDL(ydl_opts) as ydl:
         try:
+            # Extract the playlist metadata
             playlist_info = ydl.extract_info(playlist_url, download=False)
+
             if 'entries' in playlist_info:
                 for entry in playlist_info['entries']:
                     video_url = f"https://www.youtube.com/watch?v={entry['id']}"
+
+                    # Skip if the video is already in the archive file
+                    if archive_file.exists():
+                        with open(archive_file, 'r') as f:
+                            downloaded_videos = f.read().splitlines()
+                        if entry['id'] in downloaded_videos:
+                            print(f"Skipping already downloaded video: {entry['id']}")
+                            continue
+
+                    # Call the original function to download and create .nfo
                     download_video_and_create_nfo(video_url, output_directory)
-                    time.sleep(10) # Delay between videos to avoid triggering YouTube login requests
+
+                    # Add the video ID to the archive file after successful download
+                    with open(archive_file, 'a') as f:
+                        f.write(entry['id'] + '\n')
+
+                    # Delay to avoid rate limits
+                    time.sleep(10)
         except Exception as e:
             print(f"Error occurred while downloading playlist {playlist_name}: {e}")
 
