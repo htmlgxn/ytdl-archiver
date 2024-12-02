@@ -1,10 +1,15 @@
 import os
 import re
+import sys
 from pathlib import Path
-from yt_dlp import YoutubeDL
 import argparse
 import json
 import time
+
+# Add 'dependancies' folder to the Python path
+sys.path.insert(0, str(Path(__file__).parent / "dependancies"))
+
+from yt_dlp import YoutubeDL
 
 def sanitize_filename(name):
     # Convert to lowercase and replace spaces with dashes
