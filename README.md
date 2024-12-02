@@ -7,7 +7,7 @@ Based on [ytdl-nfo](https://github.com/htmlgxn/ytdl-nfo/)
 
 ## Features
 - Allows you to set the path to your YouTube archive.
-- Custom name each folder within your archive (per playlist), the rest is automated.
+- Name folders within your archive (per playlist). Supports subpaths.
 - Downloads separate .mp4, .nfo, and .jpg file for media server readability.
 - Creates an .archive.txt file in each playlist folder to allow rerun and refresh content efficiently
 
@@ -22,26 +22,36 @@ cd ytdl-archiver
 ```json
 {
     "id": "UUxxxxxxxxxxxxxxxxxxxxxx",
-    "folder-name": "Folder Name"
+    "path": "Channel Name"
 },
 {
-    "id": "...",
-    "folder-name": "..."
+    "id": "PLOggx_xxxxxxxxxxxxxxxxxx_xxxxxxxx",
+    "path": "unlisted/cool_videos"
 }
 ```
+etc.
 
-- Run python archive.py. See optional arguments below.
+- Run `python archive.py` or `python3 archive.py` etc.
+- See optional arguments below.
 
 ## Arguments
 ```bash
 -h, --help          Show help message and exit
 -j [JSON], --json [JSON]
-                    Path to JSON file containing playlist IDs and names.
+                    Path to JSON file containing playlist IDs and paths/names.
                     Defaults to ./playlists.json
 -d [DIR], --dir [DIR]
                     Path to archive directory.
                     Defaults to $HOME/Videos/YouTube
 ```
+
+## Setup as a service:
+Follow these instructions for your system:
+
+### Linux
+[systemctl](docs/system-process/linux/systemctl.md)
+### MacOS
+Coming soon!
 
 ## Optional Settings
 - The program sleeps 10 seconds between each video and 30 seconds between each playlist by default, to avoid YouTube blocking requests. These are editable at lines `133` and `167`:
@@ -74,4 +84,4 @@ ydl_opts = {
 }
 ```
 
-- More to come shortly!
+- More to come!

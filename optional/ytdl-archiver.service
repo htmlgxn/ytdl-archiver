@@ -1,0 +1,25 @@
+[Unit]
+Description=ytdl-archiver YouTube Archiving Service
+After=network.target
+
+[Service]
+Type=simple
+
+# Change to your system python binary
+# Change to your FULL path to archive.py
+# Optional: Add arguments with full paths 
+# Example: -j /home/username/ytdl-archiver/playlists_alt.json 
+# Example: -d /full/path/to/archive
+ExecStart=/usr/bin/python /home/username/ytdl-archiver/archive.py
+
+# Change to your FULL path to the script directory (archive.py location)
+WorkingDirectory=/home/username/ytdl-archiver
+
+Restart=on-failure
+
+# Change these to your system username
+User=your_username
+Group=your_username
+
+[Install]
+WantedBy=multi-user.target

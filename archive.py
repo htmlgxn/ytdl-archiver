@@ -121,9 +121,9 @@ def download_video_and_create_nfo(video_url, output_directory=None):
     else:
         print(f"Downloaded video file not found for {video_url}.")
 
-def download_playlist(playlist_id, playlist_name, base_directory):
+def download_playlist(playlist_id, playlist_path, base_directory):
     # Create the output directory for the playlist
-    output_directory = Path(base_directory) / playlist_name
+    output_directory = Path(f"{base_directory}/{playlist_path}")
     output_directory.mkdir(parents=True, exist_ok=True)
 
     # Define the archive file path for the playlist
@@ -167,7 +167,7 @@ def download_playlist(playlist_id, playlist_name, base_directory):
                     # Delay to avoid rate limits
                     time.sleep(10)
         except Exception as e:
-            print(f"Error occurred while downloading playlist {playlist_name}: {e}")
+            print(f"Error occurred while downloading playlist {playlist_path}: {e}")
 
 def main():
     # Set the default directory
@@ -175,7 +175,7 @@ def main():
 
     # Set args
     parser = argparse.ArgumentParser(description='Download YouTube playlists and save them in organized directories.')
-    parser.add_argument('-j', '--json', nargs='?', default='playlists.json', help='Path to JSON file containing playlist IDs and names. Defaults to ./playlists.json')
+    parser.add_argument('-j', '--json', nargs='?', default='playlists.json', help='Path to JSON file containing playlist IDs and paths/names. Defaults to ./playlists.json')
     parser.add_argument('-d', '--dir', nargs='?', default=default_directory, help='Path to archive directory. Defaults to $HOME/Videos/YouTube')
     args = parser.parse_args()
 
@@ -198,12 +198,12 @@ def main():
     # Download playlists
     for playlist in playlists:
         playlist_id = playlist.get('id')
-        playlist_name = playlist.get('folder-name')
-        if not playlist_id or not playlist_name:
+        playlist_path = playlist.get('path')
+        if not playlist_id or not playlist_path:
             print("Invalid playlist entry in JSON. Skipping.")
             continue
 
-        download_playlist(playlist_id, playlist_name, base_directory)
+        download_playlist(playlist_id, playlist_path, base_directory)
         time.sleep(30)  # Extra delay between playlists to avoid triggering YouTube login requests
 
 if __name__ == '__main__':
