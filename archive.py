@@ -120,12 +120,12 @@ def download_video_and_create_nfo(video_url, output_directory=None):
     else:
         output_directory = Path(output_directory)
 
-    output_directory.mkdir(parents=True, exist_ok=True)
-
-    # Check if video is YouTube Short
+    # Check if video is a YouTube Short
     if is_short(metadata):
-        output_directory = Path(f"{output_directory}/YouTube Shorts")
-    output_directory.mkdir(parents=True, exist_ok=True)
+        output_directory = output_directory / "YouTube Shorts"
+        output_directory.mkdir(parents=True, exist_ok=True)
+    else:
+        output_directory.mkdir(parents=True, exist_ok=True)
 
     # Output template with dynamic extension
     output_template = str(output_directory / f"{filename}.%(ext)s")
