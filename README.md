@@ -23,25 +23,20 @@ pip install yt-dlp
 ```
 
 ## Usage
-- First, edit `playlists.json`. Replace the sample id and folder-name.
+- First, edit your `playlists.json` file. Replace the sample id and folder-name.
 Folder name would be a YouTube channel name if downloading an entire channel's uploads for instance.
 ```json
-[
-    {
-      "id": "UUxxxxxxxxxxxxxxxxxxxxxx",
-      "folder-name": "Folder Name"
-    },
-    {
-      "id": "...",
-      "folder-name": "..."
-    }
-]
+{
+    "id": "UUxxxxxxxxxxxxxxxxxxxxxx",
+    "folder-name": "Folder Name"
+},
+{
+    "id": "...",
+    "folder-name": "..."
+}
 ```
 
-- Second, edit `archive.py`. On line `156`, set the path to your base YouTube archive folder.
-By default, it is set to `~/Videos/YouTube`
-
-- Still in the `(venv)`, run `python archive.py` to begin archiving playlists
+- Still in the `(venv)`, run `python archive.py` to begin archiving playlists to the default folder. See optional arguments below.
 
 ## Arguments
 ```bash
@@ -55,8 +50,6 @@ By default, it is set to `~/Videos/YouTube`
 ```
 
 ## Optional Settings
-- Optional arg: `python archive.py json_file /path/to/different/json` to specfify a different json file (good for tests)
-
 - The program sleeps 10 seconds between each video and 30 seconds between each playlist by default, to avoid YouTube blocking requests. These are editable at lines `133` and `167`:
 ```python
 time.sleep(10) # Delay between videos to avoid triggering YouTube login requests
