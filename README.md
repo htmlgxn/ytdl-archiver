@@ -54,7 +54,7 @@ See optional arguments below.
                     Defaults to $HOME/Videos/YouTube
 ```
 
-## Setup as a Service:
+## Setup as a Service
 Follow these instructions for your system:
 
 ### Linux
