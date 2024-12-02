@@ -36,7 +36,7 @@ sudo systemctl enable ytdl-archiver.service
 sudo systemctl start ytdl-archiver.service
 ```
 ## Maintenance
--To stop the service:
+- To stop the service:
 ```bash 
 sudo systemctl stop ytdl-archiver.service
 ```
