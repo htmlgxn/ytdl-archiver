@@ -88,6 +88,20 @@ def create_nfo_file(metadata, nfo_path):
     except IOError as e:
         print(f"Error writing .nfo file {nfo_path}: {e}")
 
+def is_short(metadata):
+    """
+    Checks if the video is a YouTube Short based on its dimensions.
+    """
+    height = metadata.get("height")
+    width = metadata.get("width")
+
+    if height and width:
+        aspect_ratio = width / height
+        return aspect_ratio < 0.7
+    else:
+        print("Video dimensions not available in metadata.")
+        return False
+
 def download_video_and_create_nfo(video_url, output_directory=None):
     metadata = get_metadata(video_url)
     if metadata is None:
@@ -106,6 +120,11 @@ def download_video_and_create_nfo(video_url, output_directory=None):
     else:
         output_directory = Path(output_directory)
 
+    output_directory.mkdir(parents=True, exist_ok=True)
+
+    # Check if video is YouTube Short
+    if is_short(metadata):
+        output_directory = Path(f"{output_directory}/YouTube Shorts")
     output_directory.mkdir(parents=True, exist_ok=True)
 
     # Output template with dynamic extension
