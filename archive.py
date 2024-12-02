@@ -88,13 +88,12 @@ def download_video_and_create_nfo(video_url, output_directory=None):
     if metadata is None:
         return
 
-    video_id = metadata.get("id", "unknown-id")
     title = metadata.get("title", "unknown-title")
     channel = metadata.get("uploader", "unknown-channel")
 
     safe_title = sanitize_filename(title)
     safe_channel = sanitize_filename(channel)
-    filename = f{video_id}_{safe_title}_{safe_channel}"
+    filename = f"{safe_title}_{safe_channel}"
 
     # If no output directory is provided, create a folder with the filename in the working directory
     if output_directory is None:
@@ -166,27 +165,32 @@ def download_playlist(playlist_id, playlist_name, base_directory):
             print(f"Error occurred while downloading playlist {playlist_name}: {e}")
 
 def main():
+    # Set the default directory
+    default_directory = str(Path.home() / "Videos" / "YouTube")
+
+    # Set args
     parser = argparse.ArgumentParser(description='Download YouTube playlists and save them in organized directories.')
-    parser.add_argument('json_file', nargs='?', default='playlists.py', help='Path to JSON file containing playlist IDs and names')
+    parser.add_argument('-j', '--json', nargs='?', default='playlists.json', help='Path to JSON file containing playlist IDs and names. Defaults to ./playlists.json')
+    parser.add_argument('-d', '--dir', nargs='?', default=default_directory, help='Path to archive directory. Defaults to $HOME/Videos/YouTube')
     args = parser.parse_args()
 
-    json_file = args.json_file
-
-    if not os.path.exists(json_file):
-        print(f"JSON file not found: {json_file}")
+    # Read playlists JSON
+    if not os.path.exists(args.json):
+        print(f"JSON file not found: {args.json}")
         return
 
-    with open(json_file, 'r') as f:
+    with open(args.json, 'r') as f:
         try:
             playlists = json.load(f)
         except json.JSONDecodeError as e:
             print(f"Error reading JSON file: {e}")
             return
 
-    # CHANGE PATH TO YOUR ARCHIVE
-    base_directory = Path('~/Videos/YouTube')
+    # Read archive directory
+    base_directory = Path(args.dir)
     base_directory.mkdir(parents=True, exist_ok=True)
 
+    # Download playlists
     for playlist in playlists:
         playlist_id = playlist.get('id')
         playlist_name = playlist.get('folder-name')

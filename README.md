@@ -9,9 +9,10 @@ Based on [ytdl-nfo](https://github.com/htmlgxn/ytdl-nfo/)
 - Allows you to set the path to your YouTube archive.
 - Custom name each folder within your archive (per playlist), the rest is automated.
 - Downloads separate .mp4, .nfo, and .jpg file for media server readability.
+- Creates an .archive.txt file in each playlist folder to allow rerun and refresh content efficiently
 
 ## "Installation"
-"Install" (make sure to continue to usage):
+Make sure th
 ```bash
 git clone https://github.com/htmlgxn/ytdl-archiver.git
 cd ytdl-archiver
@@ -31,7 +32,7 @@ Folder name would be a YouTube channel name if downloading an entire channel's u
       "folder-name": "Folder Name"
     },
     {
-      "id": "..."
+      "id": "...",
       "folder-name": "..."
     }
 ]
@@ -41,6 +42,17 @@ Folder name would be a YouTube channel name if downloading an entire channel's u
 By default, it is set to `~/Videos/YouTube`
 
 - Still in the `(venv)`, run `python archive.py` to begin archiving playlists
+
+## Arguments
+```bash
+-h, --help          Show help message and exit
+-j [JSON], --json [JSON]
+                    Path to JSON file containing playlist IDs and names.
+                    Defaults to ./playlists.json
+-d [DIR], --dir [DIR]
+                    Path to archive directory.
+                    Defaults to $HOME/Videos/YouTube
+```
 
 ## Optional Settings
 - Optional arg: `python archive.py json_file /path/to/different/json` to specfify a different json file (good for tests)
@@ -75,4 +87,4 @@ ydl_opts = {
 }
 ```
 
-- It's not a huge program, for now, so take a look!
+- More to come shortly!

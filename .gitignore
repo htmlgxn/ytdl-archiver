@@ -5,4 +5,4 @@ dist/
 build/
 *.egg-info/
 venv/
-playlists-test.json
+test/
