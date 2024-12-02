@@ -11,19 +11,14 @@ Based on [ytdl-nfo](https://github.com/htmlgxn/ytdl-nfo/)
 - Downloads separate .mp4, .nfo, and .jpg file for media server readability.
 - Creates an .archive.txt file in each playlist folder to allow rerun and refresh content efficiently
 
-## "Installation"
+## Installation
 ```bash
 git clone https://github.com/htmlgxn/ytdl-archiver.git
 cd ytdl-archiver
-python -m venv venv
-source venv/bin/activate/
-pip install --upgrade pip
-pip install yt-dlp
 ```
 
 ## Usage
-- First, edit your `playlists.json` file. Replace the sample id and folder-name.
-Folder name would be a YouTube channel name if downloading an entire channel's uploads for instance.
+- Edit `playlists.json` - this is the format:
 ```json
 {
     "id": "UUxxxxxxxxxxxxxxxxxxxxxx",
@@ -35,7 +30,7 @@ Folder name would be a YouTube channel name if downloading an entire channel's u
 }
 ```
 
-- Still in the `(venv)`, run `python archive.py` to begin archiving playlists to the default folder. See optional arguments below.
+- Run python archive.py. See optional arguments below.
 
 ## Arguments
 ```bash
