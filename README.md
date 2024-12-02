@@ -10,6 +10,7 @@ Based on [ytdl-nfo](https://github.com/htmlgxn/ytdl-nfo) and [yt-dlp](https://gi
 - Name folders within your archive (per playlist). Supports subpaths
 - Downloads separate .mp4, .nfo, and .jpg file for media server readability
 - Creates an .archive.txt file in each playlist folder to enable rerun and refresh of content efficiently
+- YouTube Shorts save within a subfolder of each playlist path
 - Loops on the hour to keep new videos in the playlist archived once the initial archive has been made
 
 ## Installation
