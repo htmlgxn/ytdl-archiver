@@ -156,6 +156,7 @@ def download_playlist(playlist_id, playlist_path, base_directory):
     ydl_opts = {
         'extract_flat': True,  # Extract metadata without downloading
         'quiet': True,         # Suppress non-critical output
+        'ignoreerrors': True,  # Ignore unavailable videos in playlist
     }
     playlist_url = f'https://www.youtube.com/playlist?list={playlist_id}'
 
