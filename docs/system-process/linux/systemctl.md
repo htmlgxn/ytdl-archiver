@@ -31,7 +31,6 @@ Group=your_username
 
 - Run the following commands:
 ```bash
-sudo cp optional/ytdl-archiver.service /
 sudo systemctl daemon-reload
 sudo systemctl enable ytdl-archiver.service
 sudo systemctl start ytdl-archiver.service
