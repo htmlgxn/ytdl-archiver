@@ -12,7 +12,6 @@ Based on [ytdl-nfo](https://github.com/htmlgxn/ytdl-nfo/)
 - Creates an .archive.txt file in each playlist folder to allow rerun and refresh content efficiently
 
 ## "Installation"
-Make sure th
 ```bash
 git clone https://github.com/htmlgxn/ytdl-archiver.git
 cd ytdl-archiver
