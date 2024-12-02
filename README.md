@@ -3,7 +3,7 @@
 A script for downloading YouTube **playlists** with thumbnails and generate a metadata `.nfo` file for media servers.
 Ideal for Jellyfin / Emby users + archivists.
 
-Based on [ytdl-nfo](https://github.com/htmlgxn/ytdl-nfo/)
+Based on [ytdl-nfo](https://github.com/htmlgxn/ytdl-nfo) and [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 
 ## Features
 - Set the path to your YouTube archive
