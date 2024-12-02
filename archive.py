@@ -74,11 +74,11 @@ def create_nfo_file(metadata, nfo_path):
     video_id = metadata.get("id", "Unknown ID")
     nfo_content = f"""<episodedetails>
   <title>{title}</title>
+  <id>{video_id}</id>
   <studio>{channel}</studio>
   <releasedate>{formatted_date}</releasedate>
   <year>{upload_year}</year>
   <plot>{description}</plot>
-  <id>{video_id}</id>
 </episodedetails>
 """
     try:
