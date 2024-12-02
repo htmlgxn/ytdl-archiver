@@ -6,10 +6,11 @@ Ideal for Jellyfin / Emby users + archivists.
 Based on [ytdl-nfo](https://github.com/htmlgxn/ytdl-nfo/)
 
 ## Features
-- Allows you to set the path to your YouTube archive.
-- Name folders within your archive (per playlist). Supports subpaths.
-- Downloads separate .mp4, .nfo, and .jpg file for media server readability.
-- Creates an .archive.txt file in each playlist folder to allow rerun and refresh content efficiently
+- Set the path to your YouTube archive
+- Name folders within your archive (per playlist). Supports subpaths
+- Downloads separate .mp4, .nfo, and .jpg file for media server readability
+- Creates an .archive.txt file in each playlist folder to enable rerun and refresh of content efficiently
+- Loops on the hour to keep new videos in the playlist archived once the initial archive has been made
 
 ## Installation
 ```bash
@@ -31,8 +32,15 @@ cd ytdl-archiver
 ```
 etc.
 
-- Run `python archive.py` or `python3 archive.py` etc.
-- See optional arguments below.
+- Run
+```bash
+python archive.py
+```
+```bash
+python3 archive.py
+```
+etc.
+See optional arguments below.
 
 ## Arguments
 ```bash
@@ -45,7 +53,7 @@ etc.
                     Defaults to $HOME/Videos/YouTube
 ```
 
-## Setup as a service:
+## Setup as a Service:
 Follow these instructions for your system:
 
 ### Linux

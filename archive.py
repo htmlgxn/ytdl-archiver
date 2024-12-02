@@ -207,4 +207,7 @@ def main():
         time.sleep(30)  # Extra delay between playlists to avoid triggering YouTube login requests
 
 if __name__ == '__main__':
-    main()
+    while True:
+        main()
+        print("Waiting for the next check...")
+        time.sleep(3600)  # Wait for 1 hour before the next iteration
