@@ -39,6 +39,9 @@ class ProgressCallback:
             title = d.get('info_dict', {}).get('title', 'Unknown')
             if self.current_video != title:
                 self.current_video = title
+                # Show start of new download
+                start_msg = f"🔵 Starting download: {title}"
+                print(start_msg, flush=True)
             
             # Show progress during download
             progress_msg = self.formatter.video_progress(
@@ -174,6 +177,9 @@ class YouTubeDownloader:
             opts["noplaylist"] = False  # Allow playlists
             opts["extractaudio"] = False  # Don't show audio extraction messages
             opts["extractvideo"] = False  # Don't show video extraction messages
+            opts["no_color"] = True  # Disable all colors from yt-dlp
+            opts["progress_with_newline"] = False  # Don't add newlines to progress
+            opts["xattr_set_filesize"] = False  # Don't show file size messages
             
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info_dict = ydl.extract_info(video_url, download=True)
