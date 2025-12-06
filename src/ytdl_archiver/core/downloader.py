@@ -280,17 +280,24 @@ class YouTubeDownloader:
             "thumbnail": str(output_directory / f"{filename}.%(ext)s"),
         }
 
+        # Completely suppress yt-dlp output by redirecting both stdout and stderr
+        import os
+        import sys
+        from contextlib import redirect_stdout, redirect_stderr
+        
+        # Save original stdout/stderr
+        original_stdout = sys.stdout
+        original_stderr = sys.stderr
+        
         try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info_dict = ydl.extract_info(video_url, download=True)
-                logger.info(
-                    "Successfully downloaded video with custom config",
-                    video_id=info_dict.get("id"),
-                    title=info_dict.get("title"),
-                    duration=info_dict.get("duration"),
-                    format=playlist_config.get("format", "default"),
-                )
-                return info_dict
+            with redirect_stdout(open(os.devnull, 'w')), redirect_stderr(open(os.devnull, 'w')):
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info_dict = ydl.extract_info(video_url, download=True)
+                    return info_dict
+        finally:
+            # Restore stdout/stderr
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
         except yt_dlp.DownloadError as e:
             logger.error("Download failed", video_url=video_url, error=str(e))
             raise DownloadError(f"Failed to download {video_url}: {e}")
