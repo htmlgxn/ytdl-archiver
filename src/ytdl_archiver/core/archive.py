@@ -93,24 +93,30 @@ class PlaylistArchiver:
         output_directory = base_directory / playlist_path
         output_directory.mkdir(parents=True, exist_ok=True)
 
-        # Initialize archive tracker
-        archive_file = output_directory / ".archive.txt"
-        tracker = ArchiveTracker(archive_file)
-
-        if self.formatter:
-            self.formatter.playlist_start(f"Processing: {playlist_path}", len(playlist_info.get("entries", [])))
-
-        # Get playlist info
+        # Get playlist info first
         playlist_url = f"https://www.youtube.com/playlist?list={playlist_id}"
         playlist_info = self._get_playlist_info(playlist_url)
 
         if not playlist_info or "entries" not in playlist_info:
             if self.formatter:
-                self.formatter.error(f"Failed to get playlist info for {playlist_path}")
+                self.formatter.error(f"Failed to get playlist info for {playlist_path} (ID: {playlist_id})")
+                self.formatter.error("Please check that the playlist ID is correct and the playlist is public")
             else:
-                logger.error("Failed to get playlist info", playlist_id=playlist_id)
+                logger.error("Failed to get playlist info", playlist_id=playlist_id, playlist_path=playlist_path)
             return
 
+        # Show playlist start message before initializing tracker
+        if self.formatter:
+            playlist_msg = self.formatter.playlist_start(f"Processing: {playlist_path}", len(playlist_info.get("entries", [])))
+            print(playlist_msg)
+
+        # Initialize archive tracker
+        archive_file = output_directory / ".archive.txt"
+        tracker = ArchiveTracker(archive_file)
+
+        # Track statistics
+        stats = {'new': 0, 'skipped': 0, 'failed': 0}
+        
         # Process each video
         for entry in playlist_info.get("entries", []):
             if not entry or not entry.get("id"):
@@ -121,8 +127,9 @@ class PlaylistArchiver:
 
             # Skip if already downloaded
             if tracker.is_downloaded(video_id):
+                stats['skipped'] += 1
                 if self.formatter:
-                    self.formatter.warning(f"Already downloaded: {entry.get('title', 'Unknown')}")
+                    print(self.formatter.warning(f"Already downloaded: {entry.get('title', 'Unknown')}"))
                 else:
                     logger.debug("Skipping already downloaded video", video_id=video_id)
                 continue
@@ -137,6 +144,8 @@ class PlaylistArchiver:
                 )
 
                 if metadata:
+                    stats['new'] += 1
+                    
                     # Generate NFO file
                     self._generate_nfo_if_needed(metadata, output_directory)
 
@@ -148,10 +157,15 @@ class PlaylistArchiver:
                         resolution = ""
                         if metadata.get("height") and metadata.get("width"):
                             resolution = f"{metadata.get('height')}p"
-                        self.formatter.video_complete(title, resolution)
-                        self.formatter.file_generated("NFO metadata")
-                        self.formatter.file_generated("Thumbnail image")
-                        self.formatter.file_generated("Subtitle file")
+                        
+                        # Show completion messages
+                        print(self.formatter.video_complete(title, resolution))
+                        print(self.formatter.file_generated("NFO metadata"))
+                        print(self.formatter.file_generated("Thumbnail image"))
+                        
+                        # Only show subtitle message if subtitles were actually downloaded
+                        if metadata.get('subtitles'):
+                            print(self.formatter.file_generated("Subtitle file"))
                     else:
                         logger.info(
                             "Successfully processed video",
@@ -160,19 +174,15 @@ class PlaylistArchiver:
                         )
 
             except Exception as e:
+                stats['failed'] += 1
                 if self.formatter:
-                    self.formatter.error(f"Failed to download {entry.get('title', 'Unknown')} - {str(e)}")
+                    print(self.formatter.error(f"Failed to download {entry.get('title', 'Unknown')} - {str(e)}"))
                 else:
                     logger.error("Failed to process video", video_id=video_id, error=str(e))
                 continue
 
         if self.formatter:
-            stats = {
-                'downloaded': tracker.get_downloaded_count(),
-                'skipped': len([entry for entry in playlist_info.get("entries", []) if tracker.is_downloaded(entry.get("id"))]),
-                'failed': 0
-            }
-            self.formatter.playlist_summary(stats)
+            print(self.formatter.playlist_summary(stats))
         else:
             logger.info(
                 "Finished processing playlist",
@@ -225,7 +235,7 @@ class PlaylistArchiver:
         except Exception as e:
             logger.error("Failed to generate NFO", error=str(e))
 
-def run(self) -> None:
+    def run(self) -> None:
         """Run the archiver with playlists from file."""
         playlists_file = self.config.get_playlists_file()
 

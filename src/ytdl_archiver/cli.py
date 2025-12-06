@@ -69,8 +69,10 @@ def cli(ctx: click.Context, config: Optional[Path], verbose: bool, quiet: bool, 
         elif quiet:
             ctx.obj["config"]._config["logging"]["level"] = "ERROR"
         
-        # Setup appropriate logging
-        setup_logging(ctx.obj["config"]._config)
+        # Setup appropriate logging - no console output for clean formatter experience
+        # Only enable console logging for verbose mode or errors
+        console_output = verbose or ctx.obj.get("output_mode") == "verbose"
+        setup_logging(ctx.obj["config"]._config, console_output=console_output)
 
         logger.info("YTDL-Archiver started", version="2.0.0")
 
@@ -125,13 +127,6 @@ def archive(
         sys.exit(130)
     except Exception as e:
         formatter.error(f"Archive failed - {str(e)}")
-        sys.exit(1)
-        sys.exit(1)
-    except KeyboardInterrupt:
-        logger.info("Archiving interrupted by user")
-        sys.exit(0)
-    except Exception as e:
-        logger.error("Unexpected error", error=str(e))
         sys.exit(1)
 
 

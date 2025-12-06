@@ -30,10 +30,11 @@ class Colors:
         PURPLE = colorama.Fore.MAGENTA
         ORANGE = colorama.Fore.LIGHTYELLOW_EX
         TEAL = colorama.Fore.CYAN
+        INFO = colorama.Fore.CYAN
         RESET = colorama.Fore.RESET
         BOLD = colorama.Style.BRIGHT
     else:
-        GREEN = BLUE = YELLOW = RED = PURPLE = ORANGE = TEAL = RESET = BOLD = ""
+        GREEN = BLUE = YELLOW = RED = PURPLE = ORANGE = TEAL = INFO = RESET = BOLD = ""
 
 
 class Symbols:
@@ -92,17 +93,27 @@ class ProgressFormatter:
             return ""
         
         # Extract progress information
-        percent = progress_data.get('percent', 0)
-        speed = progress_data.get('speed', '')
-        eta = progress_data.get('eta', '')
+        percent_str = progress_data.get('percent', '0%')
+        try:
+            percent = float(percent_str.replace('%', ''))
+        except (ValueError, AttributeError):
+            percent = 0
+            
+        speed = progress_data.get('speed', '').strip()
+        eta = progress_data.get('eta', '').strip()
         
         # Create progress bar
-        bar_length = 20
+        bar_length = 15
         filled = int(bar_length * percent / 100)
         bar = '█' * filled + '░' * (bar_length - filled)
         
+        # Truncate long titles
+        max_title_len = 30
+        if len(title) > max_title_len:
+            title = title[:max_title_len-3] + "..."
+        
         progress = self._colorize(
-            f"Download: {title} [{bar}] {percent}%",
+            f"{title} [{bar}] {percent_str}",
             Colors.BLUE
         )
         
@@ -113,7 +124,7 @@ class ProgressFormatter:
             details.append(f"ETA: {eta}")
         
         if details:
-            progress += f" ({', '.join(details)})"
+            progress += f" {', '.join(details)}"
         
         return f"{Symbols.PROGRESS} {progress}"
     
@@ -161,6 +172,10 @@ class ProgressFormatter:
             parts.append(f"{stats['skipped']} skipped")
         if stats.get('failed', 0) > 0:
             parts.append(f"{stats['failed']} failed")
+        
+        # If no parts, show completion message
+        if not parts:
+            parts.append("already up to date")
         
         return f"{Symbols.SUMMARY} {summary} {', '.join(parts)}"
 

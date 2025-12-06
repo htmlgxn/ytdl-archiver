@@ -36,17 +36,22 @@ class ProgressCallback:
     def __call__(self, d: Dict[str, Any]) -> None:
         """Handle yt-dlp progress callback."""
         if d['status'] == 'downloading' and self.formatter:
-            if self.current_video != d.get('info_dict', {}).get('title'):
-                self.current_video = d.get('info_dict', {}).get('title')
-                # Start new video progress
-                self.formatter.video_progress(
-                    self.current_video,
-                    {
-                        'percent': d.get('_percent_str', '0%'),
-                        'speed': d.get('_speed_str', ''),
-                        'eta': d.get('_eta_str', '')
-                    }
-                )
+            title = d.get('info_dict', {}).get('title', 'Unknown')
+            if self.current_video != title:
+                self.current_video = title
+            
+            # Show progress during download
+            progress_msg = self.formatter.video_progress(
+                self.current_video,
+                {
+                    'percent': d.get('_percent_str', '0%'),
+                    'speed': d.get('_speed_str', ''),
+                    'eta': d.get('_eta_str', '')
+                }
+            )
+            if progress_msg:
+                print(progress_msg, end='\r', flush=True)
+                
         elif d['status'] == 'finished' and self.formatter:
             if self.current_video:
                 title = self.current_video
@@ -58,7 +63,10 @@ class ProgressCallback:
                 if d.get('total_bytes_str'):
                     size = d.get('total_bytes_str', '')
                 
-                self.formatter.video_complete(title, resolution, size)
+                # Clear the progress line and show completion
+                print(' ' * 120, end='\r')  # Clear progress line
+                complete_msg = self.formatter.video_complete(title, resolution, size)
+                print(complete_msg)
                 self.current_video = None
 
 
@@ -97,6 +105,9 @@ class YouTubeDownloader:
             "writethumbnail": playlist_config.get(
                 "writethumbnail", self.config.get("download.write_thumbnail")
             ),
+            "quiet": True,  # Suppress raw yt-dlp output
+            "no_warnings": True,  # Suppress warnings
+            "progress_hooks": [],  # We'll add this dynamically
             "postprocessors": [
                 {
                     "key": "FFmpegThumbnailsConvertor",
@@ -151,8 +162,20 @@ class YouTubeDownloader:
             progress_callback = None
             if self.formatter and hasattr(self.formatter, 'video_progress'):
                 progress_callback = ProgressCallback(self.formatter)
+                opts["progress_hooks"] = [progress_callback]
             
-            with yt_dlp.YoutubeDL(opts, progress_hooks=[progress_callback] if progress_callback else None) as ydl:
+            # Ensure we suppress all raw output
+            opts["quiet"] = True
+            opts["no_warnings"] = True
+            opts["progress"] = False  # Disable built-in progress bar
+            opts["extract_flat"] = False  # Don't show extraction details
+            opts["print_json"] = False  # Don't print JSON
+            opts["simulate"] = False  # Actually download, but quietly
+            opts["noplaylist"] = False  # Allow playlists
+            opts["extractaudio"] = False  # Don't show audio extraction messages
+            opts["extractvideo"] = False  # Don't show video extraction messages
+            
+            with yt_dlp.YoutubeDL(opts) as ydl:
                 info_dict = ydl.extract_info(video_url, download=True)
                 return info_dict
         except yt_dlp.DownloadError as e:

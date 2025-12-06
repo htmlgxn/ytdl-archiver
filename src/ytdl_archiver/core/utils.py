@@ -10,8 +10,8 @@ from typing import Any, Dict
 import structlog
 
 
-def setup_logging(config: Dict[str, Any]) -> None:
-    """Setup structured logging with JSON output."""
+def setup_logging(config: Dict[str, Any], console_output: bool = False) -> None:
+    """Setup structured logging with JSON output to file only."""
     log_level = config.get("logging.level", "INFO")
     log_format = config.get("logging.format", "json")
     log_file = config.get("logging.file_path")
@@ -42,22 +42,25 @@ def setup_logging(config: Dict[str, Any]) -> None:
         cache_logger_on_first_use=True,
     )
 
-    # Configure standard logging
+    # Configure standard logging - no console output by default
     logging.basicConfig(
         level=getattr(logging, log_level.upper()), format="%(message)s", handlers=[]
     )
 
-    # Console handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    if log_format == "json":
-        console_handler.setFormatter(JsonFormatter())
-    else:
-        console_handler.setFormatter(
-            logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-        )
-    logging.getLogger().addHandler(console_handler)
+    # Console handler - only add if explicitly requested
+    if console_output:
+        console_handler = logging.StreamHandler(sys.stdout)
+        if log_format == "json":
+            console_handler.setFormatter(JsonFormatter())
+        else:
+            console_handler.setFormatter(
+                logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+            )
+        # Only show WARNING and ERROR levels in console
+        console_handler.setLevel(logging.WARNING)
+        logging.getLogger().addHandler(console_handler)
 
-    # File handler with rotation
+    # File handler with rotation - always enabled for debugging
     if log_file:
         log_path = Path(log_file).expanduser()
         log_path.parent.mkdir(parents=True, exist_ok=True)
