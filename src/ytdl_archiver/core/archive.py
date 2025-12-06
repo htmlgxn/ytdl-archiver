@@ -70,8 +70,9 @@ class ArchiveTracker:
 class PlaylistArchiver:
     """Main archiver class for processing playlists."""
 
-    def __init__(self, config):
+    def __init__(self, config, formatter=None):
         self.config = config
+        self.formatter = formatter
         self.downloader = None
         self.metadata_generator = None
 
@@ -96,18 +97,22 @@ class PlaylistArchiver:
         archive_file = output_directory / ".archive.txt"
         tracker = ArchiveTracker(archive_file)
 
-        logger.info("Processing playlist", playlist_id=playlist_id, path=playlist_path)
+        if self.formatter:
+            self.formatter.playlist_start(f"Processing: {playlist_path}", len(playlist_info.get("entries", [])))
 
         # Get playlist info
         playlist_url = f"https://www.youtube.com/playlist?list={playlist_id}"
         playlist_info = self._get_playlist_info(playlist_url)
 
         if not playlist_info or "entries" not in playlist_info:
-            logger.error("Failed to get playlist info", playlist_id=playlist_id)
+            if self.formatter:
+                self.formatter.error(f"Failed to get playlist info for {playlist_path}")
+            else:
+                logger.error("Failed to get playlist info", playlist_id=playlist_id)
             return
 
         # Process each video
-        for entry in playlist_info["entries"]:
+        for entry in playlist_info.get("entries", []):
             if not entry or not entry.get("id"):
                 continue
 
@@ -116,7 +121,10 @@ class PlaylistArchiver:
 
             # Skip if already downloaded
             if tracker.is_downloaded(video_id):
-                logger.debug("Skipping already downloaded video", video_id=video_id)
+                if self.formatter:
+                    self.formatter.warning(f"Already downloaded: {entry.get('title', 'Unknown')}")
+                else:
+                    logger.debug("Skipping already downloaded video", video_id=video_id)
                 continue
 
             # Download video
@@ -135,21 +143,42 @@ class PlaylistArchiver:
                     # Mark as downloaded
                     tracker.mark_downloaded(video_id)
 
-                    logger.info(
-                        "Successfully processed video",
-                        video_id=video_id,
-                        title=metadata.get("title"),
-                    )
+                    if self.formatter:
+                        title = metadata.get("title", "Unknown")
+                        resolution = ""
+                        if metadata.get("height") and metadata.get("width"):
+                            resolution = f"{metadata.get('height')}p"
+                        self.formatter.video_complete(title, resolution)
+                        self.formatter.file_generated("NFO metadata")
+                        self.formatter.file_generated("Thumbnail image")
+                        self.formatter.file_generated("Subtitle file")
+                    else:
+                        logger.info(
+                            "Successfully processed video",
+                            video_id=video_id,
+                            title=metadata.get("title"),
+                        )
 
             except Exception as e:
-                logger.error("Failed to process video", video_id=video_id, error=str(e))
+                if self.formatter:
+                    self.formatter.error(f"Failed to download {entry.get('title', 'Unknown')} - {str(e)}")
+                else:
+                    logger.error("Failed to process video", video_id=video_id, error=str(e))
                 continue
 
-        logger.info(
-            "Finished processing playlist",
-            playlist_id=playlist_id,
-            downloaded_count=tracker.get_downloaded_count(),
-        )
+        if self.formatter:
+            stats = {
+                'downloaded': tracker.get_downloaded_count(),
+                'skipped': len([entry for entry in playlist_info.get("entries", []) if tracker.is_downloaded(entry.get("id"))]),
+                'failed': 0
+            }
+            self.formatter.playlist_summary(stats)
+        else:
+            logger.info(
+                "Finished processing playlist",
+                playlist_id=playlist_id,
+                downloaded_count=tracker.get_downloaded_count(),
+            )
 
     def _get_playlist_info(self, playlist_url: str) -> Dict[str, Any]:
         """Get playlist information."""
@@ -196,21 +225,29 @@ class PlaylistArchiver:
         except Exception as e:
             logger.error("Failed to generate NFO", error=str(e))
 
-    def run(self, playlists_file: Path = None) -> None:
+def run(self) -> None:
         """Run the archiver with playlists from file."""
-        if playlists_file is None:
-            playlists_file = self.config.get_playlists_file()
+        playlists_file = self.config.get_playlists_file()
 
         if not playlists_file.exists():
+            if self.formatter:
+                self.formatter.error(f"Playlists file not found: {playlists_file}")
+            else:
+                logger.error("Playlists file not found", path=playlists_file)
             raise ArchiveError(f"Playlists file not found: {playlists_file}")
 
         # Load playlists
         try:
             playlists = self.config.load_playlists()
         except Exception as e:
+            if self.formatter:
+                self.formatter.error(f"Failed to load playlists - {str(e)}")
+            else:
+                logger.error("Failed to load playlists", error=str(e))
             raise ArchiveError(f"Failed to load playlists: {e}")
 
-        logger.info("Starting archiver", playlist_count=len(playlists))
+        if self.formatter:
+            self.formatter.playlist_start("All Playlists", len(playlists))
 
         # Process each playlist
         for i, playlist in enumerate(playlists):
@@ -218,7 +255,10 @@ class PlaylistArchiver:
             playlist_path = playlist.get("path")
 
             if not playlist_id or not playlist_path:
-                logger.warning("Invalid playlist entry", playlist=playlist)
+                if self.formatter:
+                    self.formatter.warning("Invalid playlist entry - skipping")
+                else:
+                    logger.warning("Invalid playlist entry", playlist=playlist)
                 continue
 
             try:

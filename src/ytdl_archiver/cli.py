@@ -12,6 +12,7 @@ from .config.settings import Config
 from .core.archive import PlaylistArchiver
 from .core.utils import setup_logging
 from .exceptions import YTDLArchiverError
+from .output import get_formatter, detect_output_mode, should_use_colors
 
 try:
     import structlog
@@ -34,18 +35,41 @@ except ImportError:
     "--verbose",
     "-v",
     is_flag=True,
-    help="Enable verbose logging",
+    help="Enable verbose logging with full yt-dlp output",
+)
+@click.option(
+    "--quiet",
+    "-q",
+    is_flag=True,
+    help="Minimal output - errors and summary only",
+)
+@click.option(
+    "--no-color",
+    is_flag=True,
+    help="Disable colors and emoji in output",
 )
 @click.pass_context
-def cli(ctx: click.Context, config: Optional[Path], verbose: bool) -> None:
+def cli(ctx: click.Context, config: Optional[Path], verbose: bool, quiet: bool, no_color: bool) -> None:
     """YTDL-Archiver: Modern YouTube playlist archiver."""
     try:
         ctx.ensure_object(dict)
+        
+        # Detect output mode and colors
+        output_mode = detect_output_mode(verbose, quiet)
+        use_colors = should_use_colors(no_color)
+        
+        # Store formatter and settings in context
         ctx.obj["config"] = Config(config)
-
+        ctx.obj["output_mode"] = output_mode
+        ctx.obj["use_colors"] = use_colors
+        
+        # Configure logging based on mode
         if verbose:
             ctx.obj["config"]._config["logging"]["level"] = "DEBUG"
-
+        elif quiet:
+            ctx.obj["config"]._config["logging"]["level"] = "ERROR"
+        
+        # Setup appropriate logging
         setup_logging(ctx.obj["config"]._config)
 
         logger.info("YTDL-Archiver started", version="2.0.0")
@@ -75,6 +99,8 @@ def archive(
     """Archive YouTube playlists."""
     try:
         config = ctx.obj["config"]
+        output_mode = ctx.obj.get("output_mode", "progress")
+        use_colors = ctx.obj.get("use_colors", True)
 
         if playlists:
             config._config["playlists_file"] = str(playlists)
@@ -84,11 +110,22 @@ def archive(
         # Validate configuration
         config.validate()
 
-        archiver = PlaylistArchiver(config)
+        # Get appropriate formatter
+        from .output import get_formatter
+        formatter = get_formatter(use_colors, show_progress=True, mode=output_mode)
+        
+        # Print header
+        print(formatter.header("2.0.0"))
+
+        archiver = PlaylistArchiver(config, formatter)
         archiver.run()
 
-    except YTDLArchiverError as e:
-        logger.error("Archiving failed", error=str(e))
+    except KeyboardInterrupt:
+        formatter.error("Operation cancelled by user")
+        sys.exit(130)
+    except Exception as e:
+        formatter.error(f"Archive failed - {str(e)}")
+        sys.exit(1)
         sys.exit(1)
     except KeyboardInterrupt:
         logger.info("Archiving interrupted by user")
