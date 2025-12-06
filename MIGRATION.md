@@ -14,6 +14,14 @@ python archive.py
 
 **After:**
 ```bash
+git clone https://github.com/htmlgxn/ytdl-archiver.git
+cd ytdl-archiver
+poetry install
+poetry run ytdl-archiver archive
+```
+
+**After:**
+```bash
 git clone https://github.com/yourusername/ytdl-archiver.git
 cd ytdl-archiver
 poetry install

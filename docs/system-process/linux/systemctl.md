@@ -15,13 +15,13 @@ Optionally you can change the name of the .service file on copy
 ```ini
 [Service]
 # Change to your python binary
-# Change to your FULL path to archive.py
+# Change to your FULL path to ytdl-archiver project
 # Optional: Add arguments with full paths
 # Example: -j /home/username/ytdl-archiver/playlists_alt.json 
 # Example: -d /full/path/to/archive
-ExecStart=/usr/bin/python /home/username/ytdl-archiver/archive.py
+ExecStart=/usr/bin/poetry run ytdl-archiver archive
 
-# Change to your FULL path to the script directory (archive.py location)
+# Change to your FULL path to project directory
 WorkingDirectory=/home/username/ytdl-archiver
 
 # Change these to your system username

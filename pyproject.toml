@@ -2,18 +2,17 @@
 name = "ytdl-archiver"
 version = "2.0.0"
 description = "Modern YouTube playlist archiver with media server metadata support"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Ben Chitty <htmlgxn@protonmail.com>"]
 readme = "README.md"
 license = "MIT"
-homepage = "https://github.com/yourusername/ytdl-archiver"
-repository = "https://github.com/yourusername/ytdl-archiver"
+homepage = "https://github.com/htmlgxn/ytdl-archiver"
+repository = "https://github.com/htmlgxn/ytdl-archiver"
 keywords = ["youtube", "archiver", "media-server", "jellyfin", "emby"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -26,8 +25,9 @@ packages = [{include = "ytdl_archiver", from = "src"}]
 ytdl-archiver = "ytdl_archiver.cli:main"
 
 [tool.poetry.dependencies]
-python = "^3.9"
-yt-dlp = "^2024.11.18"
+python = "^3.10"
+yt-dlp = "^2025.11.12"
+yt-dlp-ejs = "0.3.1"
 toml = "^0.10.2"
 structlog = "^24.2.0"
 tenacity = "^9.0.0"

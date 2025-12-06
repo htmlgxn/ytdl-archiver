@@ -28,20 +28,20 @@ This version has been completely modernized with:
 ## Installation
 
 ### Requirements
-- Python 3.9+
+- Python 3.10+
 - Poetry (for dependency management)
 - FFmpeg (for video processing)
 
 ### Quick Install
 ```bash
-git clone https://github.com/yourusername/ytdl-archiver.git
+git clone https://github.com/htmlgxn/ytdl-archiver.git
 cd ytdl-archiver
 poetry install
 ```
 
 ### Development Install
 ```bash
-git clone https://github.com/yourusername/ytdl-archiver.git
+git clone https://github.com/htmlgxn/ytdl-archiver.git
 cd ytdl-archiver
 poetry install --with dev
 pre-commit install
@@ -230,7 +230,9 @@ src/ytdl_archiver/
 └── exceptions.py    # Custom exceptions
 
 tests/
-├── unit/            # Unit tests
-├── integration/     # Integration tests
-└── conftest.py      # Test configuration
+├── test_cli/         # CLI tests
+├── test_config/       # Configuration tests
+├── test_core/         # Core functionality tests
+├── test_integration/  # Integration tests
+└── conftest.py       # Test configuration
 ```
