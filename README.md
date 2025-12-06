@@ -1,9 +1,21 @@
 # ytdl-archiver
 
-A script for downloading YouTube **playlists** with thumbnails and generate a metadata `.nfo` file for media servers.
+A modern Python application for downloading YouTube **playlists** with thumbnails and generating metadata `.nfo` files for media servers.
 Ideal for Jellyfin / Emby users + archivists.
 
 Based on [ytdl-nfo](https://github.com/htmlgxn/ytdl-nfo) and [yt-dlp](https://github.com/yt-dlp/yt-dlp)
+
+## Version 2.0 - Modern Architecture
+
+This version has been completely modernized with:
+- **Poetry** for dependency management
+- **TOML** configuration files
+- **Structured logging** with JSON output
+- **Comprehensive testing** with pytest
+- **Retry logic** with tenacity
+- **Type hints** and mypy validation
+- **CI/CD** with GitHub Actions
+- **Modern CLI** with click
 
 ## Features
 - Set the path to your YouTube archive
@@ -14,44 +26,71 @@ Based on [ytdl-nfo](https://github.com/htmlgxn/ytdl-nfo) and [yt-dlp](https://gi
 - Loops on the hour to keep new videos in the playlist archived once the initial archive has been made
 
 ## Installation
+
+### Requirements
+- Python 3.9+
+- Poetry (for dependency management)
+- FFmpeg (for video processing)
+
+### Quick Install
 ```bash
-git clone https://github.com/htmlgxn/ytdl-archiver.git
+git clone https://github.com/yourusername/ytdl-archiver.git
 cd ytdl-archiver
+poetry install
+```
+
+### Development Install
+```bash
+git clone https://github.com/yourusername/ytdl-archiver.git
+cd ytdl-archiver
+poetry install --with dev
+pre-commit install
 ```
 
 ## Usage
-- Edit `playlists.json` - this is the format:
+
+### 1. Initialize Configuration
+```bash
+poetry run ytdl-archiver init-config
+```
+This creates a configuration file at `~/.config/ytdl-archiver/config.toml`.
+
+### 2. Configure Playlists
+Edit your playlists.json file:
 ```json
-{
-    "id": "UUxxxxxxxxxxxxxxxxxxxxxx",
-    "path": "Channel Name"
-},
-{
-    "id": "PLOggx_xxxxxxxxxxxxxxxxxx_xxxxxxxx",
-    "path": "unlisted/cool_videos"
-}
+[
+    {
+        "id": "UUxxxxxxxxxxxxxxxxxxxxxx",
+        "path": "Channel Name"
+    },
+    {
+        "id": "PLOggx_xxxxxxxxxxxxxxxxxx_xxxxxxxx",
+        "path": "unlisted/cool_videos"
+    }
+]
 ```
-etc.
 
-- Run
+### 3. Run the Archiver
 ```bash
-python archive.py
+poetry run ytdl-archiver archive
 ```
-```bash
-python3 archive.py
-```
-etc.
-See optional arguments below.
 
-## Arguments
+### CLI Commands
 ```bash
--h, --help          Show help message and exit
--j [JSON], --json [JSON]
-                    Path to JSON file containing playlist IDs and paths/names.
-                    Defaults to ./playlists.json
--d [DIR], --dir [DIR]
-                    Path to archive directory.
-                    Defaults to $HOME/Videos/YouTube
+# Archive with custom playlists file
+poetry run ytdl-archiver archive -p /path/to/playlists.json
+
+# Archive to custom directory
+poetry run ytdl-archiver archive -d /path/to/archive
+
+# Use custom config file
+poetry run ytdl-archiver -c /path/to/config.toml archive
+
+# Enable verbose logging
+poetry run ytdl-archiver -v archive
+
+# Show help
+poetry run ytdl-archiver --help
 ```
 
 ## Setup as a Service
@@ -62,35 +101,76 @@ Follow these instructions for your system:
 ### MacOS
 Coming soon!
 
-## Optional Settings
-- The program sleeps 10 seconds between each video and 30 seconds between each playlist by default, to avoid YouTube blocking requests. These are editable at lines `133` and `167`:
-```python
-time.sleep(10) # Delay between videos to avoid triggering YouTube login requests
-time.sleep(30)  # Extra delay between playlists to avoid triggering YouTube login requests
+## Configuration
+
+The new version uses TOML configuration files. Here are the main sections:
+
+### Archive Settings
+```toml
+[archive]
+base_directory = "~/Videos/YouTube"
+delay_between_videos = 10
+delay_between_playlists = 30
+max_retries = 3
+retry_backoff_factor = 2.0
 ```
 
-- Of course, all `ydl_opts` are fully editable:
-```python
-ydl_opts = {
-    'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',  # Force .mp4 container
-    'merge_output_format': 'mp4',  # Ensure output is .mp4
-    'writesubtitles': True,        # Download subtitles
-    'subtitlesformat': 'vtt',      # Preferred subtitle format for download
-    'convertsubtitles': 'srt',     # Convert subtitles to .srt
-    'subtitleslangs': ['all'],     # All languages
-    'writethumbnail': True,        # Download thumbnail
-    'postprocessors': [
-        {'key': 'FFmpegThumbnailsConvertor', 'format': 'jpg'},  # Convert thumbnail to .jpg
-    ],
-    'outtmpl': {
-        'default': output_template,
-        'subtitle': str(output_directory / f"{filename}.%(subtitle_lang)s.%(ext)s"), # Save subtitles with the same filename
-        'thumbnail': str(output_directory / f"{filename}.%(ext)s"),  # Save thumbnail with the same filename
-    },
-    'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
-    },
-}
+### Download Settings
+```toml
+[download]
+format = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4"
+merge_output_format = "mp4"
+write_subtitles = true
+subtitle_format = "vtt"
+convert_subtitles = "srt"
+subtitle_languages = ["en"]
+write_thumbnail = true
+thumbnail_format = "jpg"
 ```
 
-- More to come!
+### YouTube Shorts
+```toml
+[shorts]
+detect_shorts = true
+shorts_subdirectory = "YouTube Shorts"
+aspect_ratio_threshold = 0.7
+```
+
+### Logging
+```toml
+[logging]
+level = "INFO"
+format = "json"  # "json" or "console"
+file_path = "~/.local/share/ytdl-archiver/logs/app.log"
+max_file_size = "10MB"
+backup_count = 5
+```
+
+## Development
+
+### Running Tests
+```bash
+poetry run pytest
+```
+
+### Code Quality
+```bash
+poetry run black src tests
+poetry run isort src tests
+poetry run flake8 src tests
+poetry run mypy src
+```
+
+### Project Structure
+```
+src/ytdl_archiver/
+├── config/          # Configuration management
+├── core/            # Core functionality
+├── cli.py           # Command line interface
+└── exceptions.py    # Custom exceptions
+
+tests/
+├── unit/            # Unit tests
+├── integration/     # Integration tests
+└── conftest.py      # Test configuration
+```

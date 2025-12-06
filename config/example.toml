@@ -1,0 +1,41 @@
+# Example configuration file for ytdl-archiver
+# Copy this to ~/.config/ytdl-archiver/config.toml and customize
+
+[archive]
+base_directory = "~/Videos/YouTube"
+delay_between_videos = 10
+delay_between_playlists = 30
+max_retries = 3
+retry_backoff_factor = 2.0
+
+[download]
+format = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4"
+merge_output_format = "mp4"
+write_subtitles = true
+subtitle_format = "vtt"
+convert_subtitles = "srt"
+subtitle_languages = ["en"]
+write_thumbnail = true
+thumbnail_format = "jpg"
+max_concurrent_downloads = 1
+
+[shorts]
+detect_shorts = true
+shorts_subdirectory = "YouTube Shorts"
+aspect_ratio_threshold = 0.7
+
+[logging]
+level = "INFO"
+format = "json"
+file_path = "~/.local/share/ytdl-archiver/logs/app.log"
+max_file_size = "10MB"
+backup_count = 5
+
+[http]
+user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+request_timeout = 30
+connect_timeout = 10
+
+[media_server]
+generate_nfo = true
+nfo_format = "kodi"
