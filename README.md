@@ -56,7 +56,22 @@ poetry run ytdl-archiver init-config
 This creates a configuration file at `~/.config/ytdl-archiver/config.toml`.
 
 ### 2. Configure Playlists
-Edit your playlists.json file:
+You can use either JSON (legacy) or TOML (recommended) format:
+
+#### TOML Format (Recommended)
+Create/edit `playlists.toml`:
+```toml
+[[playlists]]
+id = "UUxxxxxxxxxxxxxxxxxxxxxx"
+path = "Channel Name"
+
+[[playlists]]
+id = "PLOggx_xxxxxxxxxxxxxxxxxx_xxxxxxxx"
+path = "unlisted/cool_videos"
+```
+
+#### JSON Format (Legacy)
+Edit your `playlists.json` file:
 ```json
 [
     {
@@ -70,6 +85,8 @@ Edit your playlists.json file:
 ]
 ```
 
+> **Note**: If both `playlists.toml` and `playlists.json` exist, TOML format will be used.
+
 ### 3. Run the Archiver
 ```bash
 poetry run ytdl-archiver archive
@@ -77,8 +94,8 @@ poetry run ytdl-archiver archive
 
 ### CLI Commands
 ```bash
-# Archive with custom playlists file
-poetry run ytdl-archiver archive -p /path/to/playlists.json
+# Archive with custom playlists file (JSON or TOML)
+poetry run ytdl-archiver archive -p /path/to/playlists.toml
 
 # Archive to custom directory
 poetry run ytdl-archiver archive -d /path/to/archive
@@ -88,6 +105,9 @@ poetry run ytdl-archiver -c /path/to/config.toml archive
 
 # Enable verbose logging
 poetry run ytdl-archiver -v archive
+
+# Convert JSON playlists to TOML format
+poetry run ytdl-archiver convert-playlists -i playlists.json -o playlists.toml
 
 # Show help
 poetry run ytdl-archiver --help

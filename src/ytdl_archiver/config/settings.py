@@ -78,8 +78,14 @@ class Config:
 
     def get_playlists_file(self) -> Path:
         """Get the playlists file path as Path object."""
-        # Default to playlists.json in current directory for backward compatibility
-        return Path("playlists.json")
+        # Check for playlists.toml first (new format), then playlists.json (legacy)
+        toml_file = Path("playlists.toml")
+        json_file = Path("playlists.json")
+        
+        if toml_file.exists():
+            return toml_file
+        else:
+            return json_file
 
     def validate(self) -> None:
         """Validate configuration settings."""

@@ -1,5 +1,6 @@
 """YouTube video downloader with retry logic."""
 
+import logging
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional

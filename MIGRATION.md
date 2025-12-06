@@ -69,6 +69,25 @@ delay_between_playlists = 30
 ```
 
 ### Step 4: Update Playlists File
+
+#### Option A: Convert to TOML (Recommended)
+Use the new convert command:
+```bash
+poetry run ytdl-archiver convert-playlists -i playlists.json -o playlists.toml
+```
+
+Your new `playlists.toml` will look like:
+```toml
+[[playlists]]
+id = "UUxxxxxxxxxxxxxxxxxxxxxx"
+path = "Channel Name"
+
+[[playlists]]
+id = "PLOggx_xxxxxxxxxxxxxxxxxx_xxxxxxxx"
+path = "unlisted/cool_videos"
+```
+
+#### Option B: Keep JSON (Legacy)
 Your existing `playlists.json` file will work without changes:
 
 ```json

@@ -1,0 +1,15 @@
+# Playlists configuration for ytdl-archiver
+# Each playlist has an ID and a path where it should be saved
+
+[[playlists]]
+id = "UUxxxxxxxxxxxxxxxxxxxxxx"
+path = "Folder Name"
+
+# Example additional playlists:
+# [[playlists]]
+# id = "PLOggx_xxxxxxxxxxxxxxxxxx_xxxxxxxx"
+# path = "unlisted/cool_videos"
+#
+# [[playlists]]
+# id = "PLrAXtmRdnEQy4QG1qJwYtJZ3FQJp5K3"
+# path = "tech-tutorials"

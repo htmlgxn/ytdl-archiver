@@ -1,10 +1,12 @@
 """Command line interface for ytdl-archiver."""
 
+import json
 import sys
 from pathlib import Path
 from typing import Optional
 
 import click
+import toml
 
 from .config.settings import Config
 from .core.archive import PlaylistArchiver
@@ -58,7 +60,7 @@ def cli(ctx: click.Context, config: Optional[Path], verbose: bool) -> None:
     "--playlists",
     "-p",
     type=click.Path(exists=True, path_type=Path),
-    help="Path to playlists JSON file",
+    help="Path to playlists file (JSON or TOML)",
 )
 @click.option(
     "--directory",
@@ -93,6 +95,43 @@ def archive(
         sys.exit(0)
     except Exception as e:
         logger.error("Unexpected error", error=str(e))
+        sys.exit(1)
+
+
+@cli.command()
+@click.option(
+    "--input",
+    "-i",
+    type=click.Path(exists=True, path_type=Path),
+    help="Input JSON playlists file",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(path_type=Path),
+    help="Output TOML playlists file",
+)
+def convert_playlists(input: Path, output: Optional[Path]) -> None:
+    """Convert JSON playlists file to TOML format."""
+    try:
+        if output is None:
+            output = input.with_suffix(".toml")
+        
+        # Load JSON playlists
+        with open(input, "r") as f:
+            playlists = json.load(f)
+        
+        # Convert to TOML format
+        toml_data = {"playlists": playlists}
+        
+        # Write TOML file
+        with open(output, "w") as f:
+            toml.dump(toml_data, f)
+        
+        click.echo(f"Converted {input} to {output}")
+        
+    except Exception as e:
+        click.echo(f"Error converting playlists: {e}", err=True)
         sys.exit(1)
 
 

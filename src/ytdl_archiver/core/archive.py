@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Set
 
+import toml
 from ..exceptions import ArchiveError
 
 try:
@@ -202,8 +203,13 @@ class PlaylistArchiver:
 
         # Load playlists
         try:
-            with open(playlists_file, "r") as f:
-                playlists = json.load(f)
+            if playlists_file.suffix.lower() == ".toml":
+                with open(playlists_file, "r") as f:
+                    playlists_data = toml.load(f)
+                    playlists = playlists_data.get("playlists", [])
+            else:
+                with open(playlists_file, "r") as f:
+                    playlists = json.load(f)
         except Exception as e:
             raise ArchiveError(f"Failed to load playlists: {e}")
 
