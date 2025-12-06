@@ -23,8 +23,6 @@ try:
 
     logger = structlog.get_logger()
 except ImportError:
-    import logging
-
     logger = logging.getLogger(__name__)
 
 
@@ -35,28 +33,55 @@ class YouTubeDownloader:
         self.config = config
         self.ydl_opts = self._build_ydl_options()
 
-    def _build_ydl_options(self) -> Dict[str, Any]:
-        """Build yt-dlp options from configuration."""
-        return {
-            "format": self.config.get("download.format"),
-            "merge_output_format": self.config.get("download.merge_output_format"),
-            "writesubtitles": self.config.get("download.write_subtitles"),
-            "subtitlesformat": self.config.get("download.subtitle_format"),
-            "convertsubtitles": self.config.get("download.convert_subtitles"),
-            "subtitleslangs": self.config.get("download.subtitle_languages"),
-            "writethumbnail": self.config.get("download.write_thumbnail"),
+    def _build_ydl_options(self, playlist_config: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Build yt-dlp options from configuration with playlist-specific overrides."""
+        # Use empty dict if no playlist config provided
+        if playlist_config is None:
+            playlist_config = {}
+        
+        # Start with global defaults
+        opts = {
+            "format": playlist_config.get("format", self.config.get("download.format")),
+            "merge_output_format": playlist_config.get(
+                "merge_output_format", self.config.get("download.merge_output_format")
+            ),
+            "writesubtitles": playlist_config.get(
+                "writesubtitles", self.config.get("download.write_subtitles")
+            ),
+            "subtitlesformat": playlist_config.get(
+                "subtitlesformat", self.config.get("download.subtitle_format")
+            ),
+            "convertsubtitles": playlist_config.get(
+                "convertsubtitles", self.config.get("download.convert_subtitles")
+            ),
+            "subtitleslangs": playlist_config.get(
+                "subtitleslangs", self.config.get("download.subtitle_languages")
+            ),
+            "writethumbnail": playlist_config.get(
+                "writethumbnail", self.config.get("download.write_thumbnail")
+            ),
             "postprocessors": [
                 {
                     "key": "FFmpegThumbnailsConvertor",
-                    "format": self.config.get("download.thumbnail_format"),
+                    "format": playlist_config.get(
+                        "thumbnail_format", self.config.get("download.thumbnail_format")
+                    ),
                 },
             ],
             "http_headers": {
                 "User-Agent": self.config.get("http.user_agent"),
             },
-            "socket_timeout": self.config.get("http.request_timeout"),
-            "connect_timeout": self.config.get("http.connect_timeout"),
+            "socket_timeout": playlist_config.get(
+                "socket_timeout", self.config.get("http.request_timeout")
+            ),
+            "connect_timeout": playlist_config.get(
+                "connect_timeout", self.config.get("http.connect_timeout")
+            ),
         }
+
+        # Remove None values to avoid yt-dlp issues
+        opts = {k: v for k, v in opts.items() if v is not None}
+        return opts
 
     @retry(
         stop=stop_after_attempt(3),
@@ -94,9 +119,7 @@ class YouTubeDownloader:
             logger.error("Download failed", video_url=video_url, error=str(e))
             raise DownloadError(f"Failed to download {video_url}: {e}")
         except Exception as e:
-            logger.error(
-                "Unexpected error during download", video_url=video_url, error=str(e)
-            )
+            logger.error("Unexpected error during download", video_url=video_url, error=str(e))
             raise DownloadError(f"Unexpected error downloading {video_url}: {e}")
 
     def get_metadata(self, video_url: str) -> Optional[Dict[str, Any]]:
@@ -115,11 +138,12 @@ class YouTubeDownloader:
             logger.error("Failed to get metadata", video_url=video_url, error=str(e))
             return None
 
-    def download_video_with_metadata(
+    def download_video_with_config(
         self,
         video_url: str,
         output_directory: Path,
-    ) -> Optional[Dict[str, Any]]:
+        playlist_config: Dict[str, Any] = None,
+    ) -> Dict[str, Any]:
         """Download video and handle directory structure based on metadata."""
         metadata = self.get_metadata(video_url)
         if metadata is None:
@@ -150,6 +174,44 @@ class YouTubeDownloader:
         if delay > 0:
             time.sleep(delay)
 
-        return self.download_video(
-            video_url, output_template, output_directory, filename
-        )
+        # Use playlist-specific config if provided
+        if playlist_config:
+            return self.download_video_with_config_impl(
+                video_url, output_template, output_directory, filename, playlist_config
+            )
+        else:
+            return self.download_video(video_url, output_template, output_directory, filename)
+
+    def download_video_with_config_impl(
+        self,
+        video_url: str,
+        output_template: str,
+        output_directory: Path,
+        filename: str,
+        playlist_config: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Download video with specific configuration."""
+        opts = self._build_ydl_options(playlist_config)
+        opts["outtmpl"] = {
+            "default": output_template,
+            "subtitle": str(output_directory / f"{filename}.%(subtitle_lang)s.%(ext)s"),
+            "thumbnail": str(output_directory / f"{filename}.%(ext)s"),
+        }
+
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info_dict = ydl.extract_info(video_url, download=True)
+                logger.info(
+                    "Successfully downloaded video with custom config",
+                    video_id=info_dict.get("id"),
+                    title=info_dict.get("title"),
+                    duration=info_dict.get("duration"),
+                    format=playlist_config.get("format", "default"),
+                )
+                return info_dict
+        except yt_dlp.DownloadError as e:
+            logger.error("Download failed", video_url=video_url, error=str(e))
+            raise DownloadError(f"Failed to download {video_url}: {e}")
+        except Exception as e:
+            logger.error("Unexpected error during download", video_url=video_url, error=str(e))
+            raise DownloadError(f"Unexpected error downloading {video_url}: {e}")

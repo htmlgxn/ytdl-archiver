@@ -6,3 +6,30 @@ build/
 *.egg-info/
 venv/
 test/
+
+# Coverage reports
+.coverage
+htmlcov/
+coverage.xml
+
+# Test artifacts
+.pytest_cache/
+test_data/
+mock_responses/
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Development tools
+dev-tools/

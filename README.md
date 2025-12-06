@@ -61,13 +61,27 @@ You can use either JSON (legacy) or TOML (recommended) format:
 #### TOML Format (Recommended)
 Create/edit `playlists.toml`:
 ```toml
-[[playlists]]
+[[playlist]]
 id = "UUxxxxxxxxxxxxxxxxxxxxxx"
-path = "Channel Name"
+path = "Folder Name"
+name = "Example Music Channel"
 
-[[playlists]]
+# Override download settings for this playlist
+[playlist.download]
+format = "bestaudio"  # Music only needs audio
+writesubtitles = false  # Music doesn't need subtitles
+write_thumbnail = true
+
+[[playlist]]
 id = "PLOggx_xxxxxxxxxxxxxxxxxx_xxxxxxxx"
 path = "unlisted/cool_videos"
+name = "Tutorial Channel"
+
+[playlist.download]
+format = "bestvideo[height<=720]+bestaudio"  # Lower quality for tutorials
+writesubtitles = true  # Tutorials need subtitles
+subtitle_languages = ["en", "es"]  # Multiple languages
+write_thumbnail = true
 ```
 
 #### JSON Format (Legacy)
@@ -124,6 +138,32 @@ Coming soon!
 ## Configuration
 
 The new version uses TOML configuration files. Here are the main sections:
+
+### 6. Playlist-Specific Settings
+- Per-playlist yt-dlp customization
+- Override global download settings
+- Flexible configuration inheritance
+- TOML playlist format support
+
+#### Example: Different Settings per Playlist
+```toml
+# Music playlist - audio only
+[[playlist]]
+id = "music_channel_id"
+path = "Music"
+[playlist.download]
+format = "bestaudio"
+writesubtitles = false
+
+# Tutorial playlist - video with subtitles
+[[playlist]]
+id = "tutorial_channel_id"
+path = "Tutorials"
+[playlist.download]
+format = "bestvideo[height<=720]+bestaudio"
+writesubtitles = true
+subtitle_languages = ["en", "es"]
+```
 
 ### Archive Settings
 ```toml

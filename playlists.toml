@@ -1,15 +1,33 @@
 # Playlists configuration for ytdl-archiver
-# Each playlist has an ID and a path where it should be saved
+# Each playlist can have custom download settings
 
-[[playlists]]
+[[playlist]]
 id = "UUxxxxxxxxxxxxxxxxxxxxxx"
 path = "Folder Name"
+name = "Example Music Channel"
+
+# Override download settings for this playlist
+[playlist.download]
+format = "bestaudio"  # Music only needs audio
+writesubtitles = false  # Music doesn't need subtitles
+write_thumbnail = true
 
 # Example additional playlists:
-# [[playlists]]
+# [[playlist]]
 # id = "PLOggx_xxxxxxxxxxxxxxxxxx_xxxxxxxx"
 # path = "unlisted/cool_videos"
+# name = "Cool Videos"
+# [playlist.download]
+# format = "bestvideo[height<=720]+bestaudio"  # Lower quality for faster downloads
+# writesubtitles = true  # Tutorials need subtitles
+# subtitle_languages = ["en", "es"]  # Multiple languages
 #
-# [[playlists]]
+# [[playlist]]
 # id = "PLrAXtmRdnEQy4QG1qJwYtJZ3FQJp5K3"
 # path = "tech-tutorials"
+# name = "Tech Tutorials"
+# [playlist.download]
+# format = "bestvideo[height<=1080]+bestaudio"  # Medium quality
+# writesubtitles = true
+# convertsubtitles = "srt"  # Convert to SRT format
+# writethumbnail = true

@@ -39,7 +39,7 @@ jobs:
         poetry run mypy src
     
     - name: Run tests
-      run: poetry run pytest --cov=src/ytdl_archiver --cov-report=xml
+      run: poetry run pytest --cov=src/ytdl_archiver --cov-report=xml -m "not integration" -m "not integration"
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3

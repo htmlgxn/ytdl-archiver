@@ -1,10 +1,11 @@
 """Configuration management for ytdl-archiver."""
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import structlog
 import toml
+import json
 from pathvalidate import sanitize_filename
 
 from ..exceptions import ConfigurationError
@@ -86,6 +87,57 @@ class Config:
             return toml_file
         else:
             return json_file
+    
+    def load_playlists(self) -> List[Dict[str, Any]]:
+        """Load playlists from file with playlist-specific overrides."""
+        playlists_file = self.get_playlists_file()
+        
+        if not playlists_file.exists():
+            raise ConfigurationError(f"Playlists file not found: {playlists_file}")
+        
+        try:
+            if playlists_file.suffix.lower() == ".toml":
+                with open(playlists_file, "r") as f:
+                    playlists_data = toml.load(f)
+                    return playlists_data.get("playlist", [])  # Changed from "playlists" to "playlist"
+            else:
+                with open(playlists_file, "r") as f:
+                    playlists = json.load(f)
+                    # Convert legacy format to new structure
+                    return [{"id": p.get("id"), "path": p.get("path")} for p in playlists]
+        except Exception as e:
+            raise ConfigurationError(f"Failed to load playlists: {e}")
+    
+    def get_playlist_config(self, playlist_id: str) -> Dict[str, Any]:
+        """Get merged configuration for a specific playlist."""
+        playlists = self.load_playlists()
+        
+        # Find the playlist
+        playlist_data = None
+        for playlist in playlists:
+            if playlist.get("id") == playlist_id:
+                playlist_data = playlist
+                break
+        
+        if not playlist_data:
+            return {}
+        
+        # Start with global defaults
+        merged_config = {}
+        
+        # Add global download settings
+        for key in ["format", "merge_output_format", "writesubtitles", "subtitlesformat", 
+                   "convertsubtitles", "subtitle_languages", "writethumbnail", 
+                   "thumbnail_format"]:
+            global_value = self.get(f"download.{key}")
+            if global_value is not None:
+                merged_config[key] = global_value
+        
+        # Override with playlist-specific settings
+        playlist_overrides = playlist_data.get("download", {})
+        merged_config.update(playlist_overrides)
+        
+        return merged_config
 
     def validate(self) -> None:
         """Validate configuration settings."""

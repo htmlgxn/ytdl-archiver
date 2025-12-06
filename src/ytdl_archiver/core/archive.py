@@ -121,8 +121,11 @@ class PlaylistArchiver:
 
             # Download video
             try:
-                metadata = self.downloader.download_video_with_metadata(
-                    video_url, output_directory
+                # Get playlist-specific configuration
+                playlist_config = self.config.get_playlist_config(entry["id"])
+                
+                metadata = self.downloader.download_video_with_config(
+                    video_url, output_directory, playlist_config
                 )
 
                 if metadata:
@@ -203,13 +206,7 @@ class PlaylistArchiver:
 
         # Load playlists
         try:
-            if playlists_file.suffix.lower() == ".toml":
-                with open(playlists_file, "r") as f:
-                    playlists_data = toml.load(f)
-                    playlists = playlists_data.get("playlists", [])
-            else:
-                with open(playlists_file, "r") as f:
-                    playlists = json.load(f)
+            playlists = self.config.load_playlists()
         except Exception as e:
             raise ArchiveError(f"Failed to load playlists: {e}")
 
