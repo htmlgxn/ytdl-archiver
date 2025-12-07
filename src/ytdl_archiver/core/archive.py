@@ -1,12 +1,35 @@
 """Archive tracking for downloaded videos."""
 
 import json
+import logging
+import os
+import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Set
 
 import toml
 from ..exceptions import ArchiveError
+
+# Suppress yt-dlp's own logger to prevent unwanted output
+yt_dlp_logger = logging.getLogger("yt_dlp")
+yt_dlp_logger.setLevel(logging.CRITICAL)
+yt_dlp_logger.addHandler(logging.NullHandler())
+
+@contextmanager
+def suppress_output():
+    """Context manager to suppress stdout and stderr."""
+    with open(os.devnull, 'w') as devnull:
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        try:
+            sys.stdout = devnull
+            sys.stderr = devnull
+            yield
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
 
 try:
     import structlog
@@ -195,14 +218,28 @@ class PlaylistArchiver:
         opts = {
             "extract_flat": True,
             "quiet": True,
+            "no_warnings": True,
             "ignoreerrors": True,
+            "no_color": True,
+            "progress": False,
+            "progress_with_newline": False,
+            "simulate": False,
+            "print_json": False,
+            "socket_timeout": 30,
+            "retries": 2,
+            "extractor_retries": 2,
+            "no_check_certificates": True,
+            "no_call_home": True,
+            "no_update_check": True,
+            "noplaylist": False,
         }
 
         try:
             import yt_dlp
 
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                return ydl.extract_info(playlist_url, download=False)
+            with suppress_output():
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    return ydl.extract_info(playlist_url, download=False)
         except Exception as e:
             logger.error(
                 "Failed to get playlist info", playlist_url=playlist_url, error=str(e)

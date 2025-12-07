@@ -120,7 +120,11 @@ def archive(
         print(formatter.header("2.0.0"))
 
         archiver = PlaylistArchiver(config, formatter)
-        archiver.run()
+        
+        try:
+            archiver.run()
+        except Exception as e:
+            raise
 
     except KeyboardInterrupt:
         formatter.error("Operation cancelled by user")

@@ -1,11 +1,40 @@
 """YouTube video downloader with retry logic."""
 
 import logging
+import os
+import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yt_dlp
+
+# Completely suppress yt-dlp's own logger to prevent unwanted output
+yt_dlp_logger = logging.getLogger("yt_dlp")
+yt_dlp_logger.setLevel(logging.CRITICAL)
+yt_dlp_logger.addHandler(logging.NullHandler())
+
+# Also suppress any child loggers
+for logger_name in ['yt_dlp', 'yt_dlp.extractor', 'yt_dlp.downloader', 'yt_dlp.postprocessor']:
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(logging.CRITICAL)
+    logger.addHandler(logging.NullHandler())
+
+
+@contextmanager
+def suppress_output():
+    """Context manager to suppress stdout and stderr."""
+    with open(os.devnull, 'w') as devnull:
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        try:
+            sys.stdout = devnull
+            sys.stderr = devnull
+            yield
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
 from tenacity import (
     before_sleep_log,
     retry,
@@ -35,6 +64,7 @@ class ProgressCallback:
     
     def __call__(self, d: Dict[str, Any]) -> None:
         """Handle yt-dlp progress callback."""
+        # Suppress all raw yt-dlp output by not processing any status that would generate it
         if d['status'] == 'downloading' and self.formatter:
             title = d.get('info_dict', {}).get('title', 'Unknown')
             if self.current_video != title:
@@ -43,7 +73,7 @@ class ProgressCallback:
                 start_msg = f"🔵 Starting download: {title}"
                 print(start_msg, flush=True)
             
-            # Show progress during download
+            # Show progress during download - but suppress raw output
             progress_msg = self.formatter.video_progress(
                 self.current_video,
                 {
@@ -161,34 +191,44 @@ class YouTubeDownloader:
         }
 
         try:
-            # Add progress callback if formatter supports it
-            progress_callback = None
-            if self.formatter and hasattr(self.formatter, 'video_progress'):
-                progress_callback = ProgressCallback(self.formatter)
-                opts["progress_hooks"] = [progress_callback]
+            # Disable progress hooks completely to prevent raw yt-dlp output
+            # We'll handle progress through our own monitoring
+            opts["progress_hooks"] = []
             
             # Ensure we suppress all raw output
-            opts["quiet"] = True
-            opts["no_warnings"] = True
-            opts["progress"] = False  # Disable built-in progress bar
-            opts["extract_flat"] = False  # Don't show extraction details
-            opts["print_json"] = False  # Don't print JSON
-            opts["simulate"] = False  # Actually download, but quietly
-            opts["noplaylist"] = False  # Allow playlists
-            opts["extractaudio"] = False  # Don't show audio extraction messages
-            opts["extractvideo"] = False  # Don't show video extraction messages
-            opts["no_color"] = True  # Disable all colors from yt-dlp
-            opts["progress_with_newline"] = False  # Don't add newlines to progress
-            opts["xattr_set_filesize"] = False  # Don't show file size messages
+            opts.update({
+                "quiet": True,
+                "no_warnings": True,
+                "progress": False,  # Disable built-in progress bar
+                "extract_flat": False,  # Don't show extraction details
+                "print_json": False,  # Don't print JSON
+                "simulate": False,  # Actually download, but quietly
+                "noplaylist": False,  # Allow playlists
+                "extractaudio": False,  # Don't show audio extraction messages
+                "extractvideo": False,  # Don't show video extraction messages
+                "no_color": True,  # Disable all colors from yt-dlp
+                "progress_with_newline": False,  # Don't add newlines to progress
+                "xattr_set_filesize": False,  # Don't show file size messages
+                "skip_unavailable_fragments": True,  # Skip unavailable fragments silently
+                "ignoreerrors": True,  # Continue on errors
+                "no_check_certificates": True,  # Skip SSL certificate warnings
+                "socket_timeout": 60,  # Prevent hanging
+                "retries": 3,  # Retry failed attempts
+                "fragment_retries": 3,  # Retry failed fragments
+                "extractor_retries": 3,  # Retry failed extractions
+                "file_access_retries": 3,  # Retry file access
+                "no_call_home": True,  # Don't contact yt-dlp servers
+                "no_update_check": True,  # Don't check for updates
+                "download_archive": None,  # Disable yt-dlp's own archive
+                "cookiefile": None,  # Disable cookie file messages
+                "user_agent": None,  # Suppress user agent messages
+            })
             
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info_dict = ydl.extract_info(video_url, download=True)
                 return info_dict
-        except yt_dlp.DownloadError as e:
-            if self.formatter:
-                self.formatter.error(f"Failed to download video - {str(e)}")
-            else:
-                logger.error("Download failed", video_url=video_url, error=str(e))
+        except DownloadError as e:
+            logger.error("Download failed", video_url=video_url, error=str(e))
             raise DownloadError(f"Failed to download {video_url}: {e}")
         except Exception as e:
             if self.formatter:
@@ -210,9 +250,10 @@ class YouTubeDownloader:
             opts["extractor_args"] = "youtube:player_client=default"
 
         try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info_dict = ydl.extract_info(video_url, download=False)
-                return info_dict
+            with suppress_output():
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info_dict = ydl.extract_info(video_url, download=False)
+                    return info_dict
         except Exception as e:
             if self.formatter:
                 self.formatter.error(f"Failed to get metadata - {str(e)}")
@@ -280,25 +321,26 @@ class YouTubeDownloader:
             "thumbnail": str(output_directory / f"{filename}.%(ext)s"),
         }
 
-        # Completely suppress yt-dlp output by redirecting both stdout and stderr
-        import os
-        import sys
-        from contextlib import redirect_stdout, redirect_stderr
-        
-        # Save original stdout/stderr
-        original_stdout = sys.stdout
-        original_stderr = sys.stderr
-        
+        # Ensure we suppress all raw output
+        opts["quiet"] = True
+        opts["no_warnings"] = True
+        opts["progress"] = False  # Disable built-in progress bar
+        opts["extract_flat"] = False  # Don't show extraction details
+        opts["print_json"] = False  # Don't print JSON
+        opts["simulate"] = False  # Actually download, but quietly
+        opts["noplaylist"] = False  # Allow playlists
+        opts["extractaudio"] = False  # Don't show audio extraction messages
+        opts["extractvideo"] = False  # Don't show video extraction messages
+        opts["no_color"] = True  # Disable all colors from yt-dlp
+        opts["progress_with_newline"] = False  # Don't add newlines to progress
+        opts["xattr_set_filesize"] = False  # Don't show file size messages
+
         try:
-            with redirect_stdout(open(os.devnull, 'w')), redirect_stderr(open(os.devnull, 'w')):
+            with suppress_output():
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     info_dict = ydl.extract_info(video_url, download=True)
                     return info_dict
-        finally:
-            # Restore stdout/stderr
-            sys.stdout = original_stdout
-            sys.stderr = original_stderr
-        except yt_dlp.DownloadError as e:
+        except DownloadError as e:
             logger.error("Download failed", video_url=video_url, error=str(e))
             raise DownloadError(f"Failed to download {video_url}: {e}")
         except Exception as e:
