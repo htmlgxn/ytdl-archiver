@@ -11,8 +11,7 @@ import toml
 from .config.settings import Config
 from .core.archive import PlaylistArchiver
 from .core.utils import setup_logging
-from .exceptions import YTDLArchiverError
-from .output import get_formatter, detect_output_mode, should_use_colors
+from .output import detect_output_mode, should_use_colors
 
 try:
     import structlog
@@ -49,26 +48,32 @@ except ImportError:
     help="Disable colors and emoji in output",
 )
 @click.pass_context
-def cli(ctx: click.Context, config: Optional[Path], verbose: bool, quiet: bool, no_color: bool) -> None:
+def cli(
+    ctx: click.Context,
+    config: Optional[Path],
+    verbose: bool,
+    quiet: bool,
+    no_color: bool,
+) -> None:
     """YTDL-Archiver: Modern YouTube playlist archiver."""
     try:
         ctx.ensure_object(dict)
-        
+
         # Detect output mode and colors
         output_mode = detect_output_mode(verbose, quiet)
         use_colors = should_use_colors(no_color)
-        
+
         # Store formatter and settings in context
         ctx.obj["config"] = Config(config)
         ctx.obj["output_mode"] = output_mode
         ctx.obj["use_colors"] = use_colors
-        
+
         # Configure logging based on mode
         if verbose:
             ctx.obj["config"]._config["logging"]["level"] = "DEBUG"
         elif quiet:
             ctx.obj["config"]._config["logging"]["level"] = "ERROR"
-        
+
         # Setup appropriate logging - no console output for clean formatter experience
         # Only enable console logging for verbose mode or errors
         console_output = verbose or ctx.obj.get("output_mode") == "verbose"
@@ -109,22 +114,22 @@ def archive(
         if directory:
             config._config["archive"]["base_directory"] = str(directory)
 
-        # Validate configuration
+        # Validate configuration FIRST
         config.validate()
+
+        # CRITICAL: Ensure playlists file exists BEFORE running archiver
+        config.ensure_playlists_file()
 
         # Get appropriate formatter
         from .output import get_formatter
+
         formatter = get_formatter(use_colors, show_progress=True, mode=output_mode)
-        
+
         # Print header
         print(formatter.header("2.0.0"))
 
         archiver = PlaylistArchiver(config, formatter)
-        
-        try:
-            archiver.run()
-        except Exception as e:
-            raise
+        archiver.run()  # Will now safely load playlists from config directory
 
     except KeyboardInterrupt:
         formatter.error("Operation cancelled by user")
@@ -152,20 +157,20 @@ def convert_playlists(input: Path, output: Optional[Path]) -> None:
     try:
         if output is None:
             output = input.with_suffix(".toml")
-        
+
         # Load JSON playlists
         with open(input, "r") as f:
             playlists = json.load(f)
-        
+
         # Convert to TOML format
         toml_data = {"playlists": playlists}
-        
+
         # Write TOML file
         with open(output, "w") as f:
             toml.dump(toml_data, f)
-        
+
         click.echo(f"Converted {input} to {output}")
-        
+
     except Exception as e:
         click.echo(f"Error converting playlists: {e}", err=True)
         sys.exit(1)

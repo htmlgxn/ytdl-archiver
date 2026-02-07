@@ -4,8 +4,7 @@ cookies.txt
 dist/
 build/
 *.egg-info/
-venv/
-test/
+.venv/
 
 # Coverage reports
 .coverage
@@ -33,3 +32,4 @@ Thumbs.db
 
 # Development tools
 dev-tools/
+dev-files/
