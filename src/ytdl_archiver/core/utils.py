@@ -54,7 +54,9 @@ def setup_logging(config: Dict[str, Any], console_output: bool = False) -> None:
             console_handler.setFormatter(JsonFormatter())
         else:
             console_handler.setFormatter(
-                logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+                logging.Formatter(
+                    "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+                )
             )
         # Only show WARNING and ERROR levels in console
         console_handler.setLevel(logging.WARNING)

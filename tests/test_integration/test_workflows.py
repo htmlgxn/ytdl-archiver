@@ -1,8 +1,5 @@
 """Integration tests with real YouTube playlist."""
 
-import tempfile
-from pathlib import Path
-
 import pytest
 
 from ytdl_archiver.config.settings import Config
@@ -18,7 +15,7 @@ class TestRealPlaylistIntegration:
         """Test downloading real playlist PLOgg6_QCO8CeFd55aR1RgzSQOOWhR12uj."""
         # Create a temporary config
         config_file = temp_dir / "config.toml"
-        
+
         # Minimal config for testing
         config_content = """
 [archive]
@@ -44,32 +41,34 @@ nfo_format = "kodi"
 level = "INFO"
 format = "text"
         """.format(str(temp_dir / "downloads"))
-        
+
         config_file.write_text(config_content)
-        
+
         # Load config
         config = Config(config_file)
-        
+
         # Create archiver
         archiver = PlaylistArchiver(config)
-        
+
         # Test getting playlist info (this will make real API call)
-        playlist_url = "https://www.youtube.com/playlist?list=PLOgg6_QCO8CeFd55aR1RgzSQOOWhR12uj"
-        
+        playlist_url = (
+            "https://www.youtube.com/playlist?list=PLOgg6_QCO8CeFd55aR1RgzSQOOWhR12uj"
+        )
+
         # This test is marked as integration and slow
         # It makes real API calls and should be run manually
         try:
             playlist_info = archiver._get_playlist_info(playlist_url)
-            
+
             # Basic validation that we got some data
             assert playlist_info is not None
             assert "id" in playlist_info
             assert "title" in playlist_info
             assert "entries" in playlist_info
-            
+
             # Check that we got the expected playlist ID
             assert playlist_info["id"] == "PLOgg6_QCO8CeFd55aR1RgzSQOOWhR12uj"
-            
+
         except Exception as e:
             pytest.skip(f"Real API call failed: {e}")
 
@@ -77,7 +76,7 @@ format = "text"
         """Test metadata extraction from real playlist."""
         # Create a temporary config
         config_file = temp_dir / "config.toml"
-        
+
         config_content = """
 [archive]
 base_directory = "{}"
@@ -91,31 +90,33 @@ write_thumbnail = false
 level = "ERROR"
 format = "text"
         """.format(str(temp_dir / "downloads"))
-        
+
         config_file.write_text(config_content)
-        
+
         # Load config
         config = Config(config_file)
-        
+
         # Create archiver
         archiver = PlaylistArchiver(config)
-        
+
         # Test getting playlist info
-        playlist_url = "https://www.youtube.com/playlist?list=PLOgg6_QCO8CeFd55aR1RgzSQOOWhR12uj"
-        
+        playlist_url = (
+            "https://www.youtube.com/playlist?list=PLOgg6_QCO8CeFd55aR1RgzSQOOWhR12uj"
+        )
+
         try:
             playlist_info = archiver._get_playlist_info(playlist_url)
-            
+
             if playlist_info and playlist_info.get("entries"):
                 # Test metadata extraction for first video
                 first_video = playlist_info["entries"][0]
-                
+
                 # Basic metadata validation
                 assert "id" in first_video
                 assert "title" in first_video
                 assert "duration" in first_video
                 assert "upload_date" in first_video
-                
+
         except Exception as e:
             pytest.skip(f"Real API call failed: {e}")
 
@@ -124,10 +125,10 @@ format = "text"
     def test_full_playlist_processing_mock(self, temp_dir, sample_playlist_data):
         """Test full playlist processing with mocked data."""
         # This test simulates the full workflow without making real API calls
-        
+
         # Create a temporary config
         config_file = temp_dir / "config.toml"
-        
+
         config_content = """
 [archive]
 base_directory = "{}"
@@ -152,24 +153,26 @@ nfo_format = "kodi"
 level = "ERROR"
 format = "text"
         """.format(str(temp_dir / "downloads"))
-        
+
         config_file.write_text(config_content)
-        
+
         # Load config
         config = Config(config_file)
-        
+
         # Create archiver
         archiver = PlaylistArchiver(config)
-        
+
         # Mock the _get_playlist_info method to return our test data
-        with pytest.MonkeyPatch.object(archiver, '_get_playlist_info', return_value=sample_playlist_data):
+        with pytest.MonkeyPatch.object(
+            archiver, "_get_playlist_info", return_value=sample_playlist_data
+        ):
             # Process the playlist
             archiver.process_playlist("test_playlist", "TestPlaylist")
-            
+
             # Check that archive file was created
             archive_file = temp_dir / "downloads" / "TestPlaylist" / ".archive.txt"
             assert archive_file.exists()
-            
+
             # Check that videos were marked as downloaded
             archive_content = archive_file.read_text()
             for entry in sample_playlist_data.get("entries", []):

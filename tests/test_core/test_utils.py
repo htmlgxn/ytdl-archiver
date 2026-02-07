@@ -1,8 +1,6 @@
 """Tests for utility functions."""
 
-import tempfile
-from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -57,10 +55,10 @@ class TestUtils:
             "width": 800,
             "height": 1200,  # aspect ratio = 0.67
         }
-        
+
         # Default threshold (0.7) should detect as short
         assert is_short(video_info) is True
-        
+
         # With custom threshold of 0.5, should not detect as short
         assert is_short(video_info, aspect_ratio_threshold=0.5) is False
 
@@ -81,7 +79,7 @@ class TestUtils:
             ("video-with-dashes.mp4", "video-with-dashes.mp4"),
             ("video_with_underscores.mp4", "video_with_underscores.mp4"),
         ]
-        
+
         for input_name, expected in test_cases:
             result = sanitize_filename(input_name)
             assert result == expected
@@ -96,7 +94,7 @@ class TestUtils:
             ("video?with?questions.mp4", "videowithquestions.mp4"),
             ("video*with*asterisks.mp4", "videowithasterisks.mp4"),
         ]
-        
+
         for input_name, expected in test_cases:
             result = sanitize_filename(input_name)
             assert result == expected
@@ -108,7 +106,7 @@ class TestUtils:
             ("..\\..\\windows\\system", "windowswindowsystem"),
             ("video/../../../etc/passwd", "video.....etcpasswd"),
         ]
-        
+
         for input_name, expected in test_cases:
             result = sanitize_filename(input_name)
             assert result == expected
@@ -128,7 +126,7 @@ class TestUtils:
         """Test filename sanitization with very long names."""
         long_name = "a" * 300 + ".mp4"
         result = sanitize_filename(long_name)
-        
+
         # Should be truncated to reasonable length
         assert len(result) < len(long_name)
         assert result.endswith(".mp4")
@@ -160,7 +158,7 @@ class TestUtils:
             ("5Mb", 5 * 1024 * 1024),
             ("1Gb", 1024 * 1024 * 1024),
         ]
-        
+
         for input_size, expected in test_cases:
             result = _parse_size(input_size)
             assert result == expected
@@ -178,7 +176,7 @@ class TestUtils:
             "abcMB",  # Invalid number
             "",  # Empty string
         ]
-        
+
         for input_size in test_cases:
             with pytest.raises(ValueError):
                 _parse_size(input_size)
@@ -192,10 +190,10 @@ class TestUtils:
             "max_file_size": "1MB",
             "backup_count": 3,
         }
-        
-        with patch('ytdl_archiver.core.utils.structlog') as mock_structlog:
+
+        with patch("ytdl_archiver.core.utils.structlog") as mock_structlog:
             setup_logging(config)
-            
+
             # Should configure structlog
             mock_structlog.configure.assert_called_once()
 
@@ -208,10 +206,10 @@ class TestUtils:
             "max_file_size": "1MB",
             "backup_count": 3,
         }
-        
-        with patch('ytdl_archiver.core.utils.structlog') as mock_structlog:
+
+        with patch("ytdl_archiver.core.utils.structlog") as mock_structlog:
             setup_logging(config)
-            
+
             # Should configure with text processor
             call_args = mock_structlog.configure.call_args[1]
             assert "processors" in call_args
@@ -226,9 +224,9 @@ class TestUtils:
             "max_file_size": "1MB",
             "backup_count": 3,
         }
-        
+
         setup_logging(config)
-        
+
         # Should create parent directory
         assert log_path.parent.exists()
 
@@ -241,7 +239,7 @@ class TestUtils:
             "max_file_size": "1MB",
             "backup_count": 3,
         }
-        
+
         # Should not raise exception, but use default level
         setup_logging(config)
 
@@ -254,6 +252,6 @@ class TestUtils:
             "max_file_size": "1MB",
             "backup_count": 3,
         }
-        
+
         # Should not raise exception
         setup_logging(config)

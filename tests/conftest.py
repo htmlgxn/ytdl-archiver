@@ -1,11 +1,8 @@
 """Pytest configuration and fixtures for ytdl-archiver tests."""
 
-import json
 import sys
-import tempfile
 from pathlib import Path
 from typing import Any, Dict, List
-from unittest.mock import Mock
 
 import pytest
 import toml
@@ -87,6 +84,7 @@ def sample_config_file(temp_config_dir: Path, sample_config: Dict[str, Any]) -> 
 def config(sample_config_file: Path):
     """Create a Config instance with sample configuration."""
     from ytdl_archiver.config.settings import Config
+
     return Config(sample_config_file)
 
 
@@ -155,6 +153,7 @@ def archive_file(temp_dir: Path) -> Path:
 def archive_tracker(archive_file: Path):
     """Create an ArchiveTracker instance."""
     from ytdl_archiver.core.archive import ArchiveTracker
+
     return ArchiveTracker(archive_file)
 
 
@@ -170,6 +169,7 @@ def mock_yt_dlp(mocker):
 def downloader(config):
     """Create a YouTubeDownloader instance."""
     from ytdl_archiver.core.downloader import YouTubeDownloader
+
     return YouTubeDownloader(config)
 
 
@@ -177,6 +177,7 @@ def downloader(config):
 def metadata_generator(config):
     """Create a MetadataGenerator instance."""
     from ytdl_archiver.core.metadata import MetadataGenerator
+
     return MetadataGenerator(config)
 
 
@@ -184,6 +185,7 @@ def metadata_generator(config):
 def playlist_archiver(config, temp_dir: Path):
     """Create a PlaylistArchiver instance."""
     from ytdl_archiver.core.archive import PlaylistArchiver
+
     return PlaylistArchiver(config, temp_dir)
 
 
@@ -250,15 +252,12 @@ def mock_short_video_info() -> Dict[str, Any]:
 # Test markers
 pytest_plugins = []
 
+
 # Add custom markers
 def pytest_configure(config):
     """Configure custom pytest markers."""
     config.addinivalue_line(
         "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
     )
-    config.addinivalue_line(
-        "markers", "integration: marks tests as integration tests"
-    )
-    config.addinivalue_line(
-        "markers", "unit: marks tests as unit tests"
-    )
+    config.addinivalue_line("markers", "integration: marks tests as integration tests")
+    config.addinivalue_line("markers", "unit: marks tests as unit tests")

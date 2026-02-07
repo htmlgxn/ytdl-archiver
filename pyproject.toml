@@ -1,67 +1,71 @@
-[tool.poetry]
+[project]
 name = "ytdl-archiver"
-version = "2.0.0"
+version = "2026.2.7"
 description = "Modern YouTube playlist archiver with media server metadata support"
-authors = ["Ben Chitty <htmlgxn@protonmail.com>"]
 readme = "README.md"
-license = "MIT"
-homepage = "https://github.com/htmlgxn/ytdl-archiver"
-repository = "https://github.com/htmlgxn/ytdl-archiver"
+requires-python = ">=3.14"
+license = {text = "MIT"}
+authors = [
+    {name = "Ben Chitty", email = "htmlgxn@protonmail.com"},
+]
 keywords = ["youtube", "archiver", "media-server", "jellyfin", "emby"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Multimedia :: Video",
     "Topic :: System :: Archiving",
 ]
-packages = [{include = "ytdl_archiver", from = "src"}]
+dependencies = [
+    "yt-dlp==2026.2.4",
+    "yt-dlp-ejs==0.3.1",
+    "toml>=0.10.2,<0.11.0",
+    "structlog>=24.2.0,<25.0.0",
+    "tenacity>=9.0.0,<10.0.0",
+    "click>=8.1.7,<9.0.0",
+    "pathvalidate>=3.0.0,<4.0.0",
+    "tqdm>=4.66.0,<5.0.0",
+    "colorama>=0.4.6,<0.5.0",
+]
+optional-dependencies = {dev = [
+    "pytest>=8.3.0,<9.0.0",
+    "pytest-cov>=6.0.0,<7.0.0",
+    "pytest-mock>=3.14.0,<4.0.0",
+    "black>=24.10.0,<25.0.0",
+    "isort>=5.13.0,<6.0.0",
+    "flake8>=7.1.0,<8.0.0",
+    "mypy>=1.13.0,<2.0.0",
+    "pre-commit>=4.0.0,<5.0.0",
+]}
 
-[tool.poetry.scripts]
+[project.scripts]
 ytdl-archiver = "ytdl_archiver.cli:main"
 
-[tool.poetry.dependencies]
-python = "^3.10"
-yt-dlp = "^2025.11.12"
-yt-dlp-ejs = "0.3.1"
-toml = "^0.10.2"
-structlog = "^24.2.0"
-tenacity = "^9.0.0"
-click = "^8.1.7"
-pathvalidate = "^3.0.0"
-tqdm = "^4.66.0"
-colorama = "^0.4.6"
-
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.3.0"
-pytest-cov = "^6.0.0"
-pytest-mock = "^3.14.0"
-black = "^24.10.0"
-isort = "^5.13.0"
-flake8 = "^7.1.0"
-mypy = "^1.13.0"
-pre-commit = "^4.0.0"
+[project.urls]
+Homepage = "https://github.com/htmlgxn/ytdl-archiver"
+Repository = "https://github.com/htmlgxn/ytdl-archiver"
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/ytdl_archiver"]
+
+# Keep your existing tool configurations (uv respects these)
 [tool.black]
 line-length = 88
-target-version = ['py39']
-include = '\.pyi?$'
+target-version = ["py314"]
 
 [tool.isort]
 profile = "black"
+line_length = 88
 multi_line_output = 3
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.14"
 warn_return_any = true
 strict_optional = true
 disallow_untyped_defs = true
