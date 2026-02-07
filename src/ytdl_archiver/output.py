@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 try:
     import colorama
-    from tqdm import tqdm
+    # from tqdm import tqdm
 
     COLOR_SUPPORT = True
 except ImportError:
