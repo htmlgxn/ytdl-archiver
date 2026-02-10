@@ -5,12 +5,12 @@ import logging
 import logging.handlers
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import structlog
 
 
-def setup_logging(config: Dict[str, Any], console_output: bool = False) -> None:
+def setup_logging(config: dict[str, Any], console_output: bool = False) -> None:
     """Setup structured logging with JSON output to file only."""
     log_level = config.get("logging.level", "INFO")
     log_format = config.get("logging.format", "json")
@@ -101,12 +101,11 @@ def _parse_size(size_str: str) -> int:
     size_str = size_str.upper()
     if size_str.endswith("KB"):
         return int(size_str[:-2]) * 1024
-    elif size_str.endswith("MB"):
+    if size_str.endswith("MB"):
         return int(size_str[:-2]) * 1024 * 1024
-    elif size_str.endswith("GB"):
+    if size_str.endswith("GB"):
         return int(size_str[:-2]) * 1024 * 1024 * 1024
-    else:
-        return int(size_str)
+    return int(size_str)
 
 
 def sanitize_filename(name: str) -> str:
@@ -122,7 +121,7 @@ def sanitize_filename(name: str) -> str:
     return name
 
 
-def is_short(metadata: Dict[str, Any], aspect_ratio_threshold: float = 0.7) -> bool:
+def is_short(metadata: dict[str, Any], aspect_ratio_threshold: float = 0.7) -> bool:
     """
     Check if the video is a YouTube Short based on its dimensions.
 
@@ -139,5 +138,4 @@ def is_short(metadata: Dict[str, Any], aspect_ratio_threshold: float = 0.7) -> b
     if height and width:
         aspect_ratio = width / height
         return aspect_ratio < aspect_ratio_threshold
-    else:
-        return False
+    return False

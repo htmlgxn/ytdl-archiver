@@ -136,9 +136,7 @@ class TestMetadataGenerator:
         output_path = temp_dir / "test_error.nfo"
 
         # Mock open to raise permission error
-        mocker.patch(
-            "builtins.open", side_effect=PermissionError("Permission denied")
-        )
+        mocker.patch("builtins.open", side_effect=PermissionError("Permission denied"))
 
         with pytest.raises(MetadataError, match="Failed to create NFO file"):
             generator.create_nfo_file(mock_video_info, output_path)

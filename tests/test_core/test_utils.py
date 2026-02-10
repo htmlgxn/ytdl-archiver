@@ -5,10 +5,10 @@ from unittest.mock import patch
 import pytest
 
 from ytdl_archiver.core.utils import (
+    _parse_size,
     is_short,
     sanitize_filename,
     setup_logging,
-    _parse_size,
 )
 
 

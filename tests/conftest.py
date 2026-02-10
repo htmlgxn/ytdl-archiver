@@ -2,7 +2,7 @@
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 import toml
@@ -26,7 +26,7 @@ def temp_config_dir(temp_dir: Path) -> Path:
 
 
 @pytest.fixture
-def sample_config() -> Dict[str, Any]:
+def sample_config() -> dict[str, Any]:
     """Sample configuration dictionary for testing."""
     return {
         "archive": {
@@ -72,7 +72,7 @@ def sample_config() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def sample_config_file(temp_config_dir: Path, sample_config: Dict[str, Any]) -> Path:
+def sample_config_file(temp_config_dir: Path, sample_config: dict[str, Any]) -> Path:
     """Create a sample configuration file."""
     config_file = temp_config_dir / "config.toml"
     with open(config_file, "w") as f:
@@ -89,7 +89,7 @@ def config(sample_config_file: Path):
 
 
 @pytest.fixture
-def sample_playlist_data() -> Dict[str, Any]:
+def sample_playlist_data() -> dict[str, Any]:
     """Sample playlist metadata from YouTube API."""
     return {
         "id": "PLOgg6_QCO8CeFd55aR1RgzSQOOWhR12uj",
@@ -129,7 +129,7 @@ def sample_playlist_data() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def sample_playlist_config() -> List[Dict[str, Any]]:
+def sample_playlist_config() -> list[dict[str, Any]]:
     """Sample playlist configuration."""
     return [
         {
@@ -190,7 +190,7 @@ def playlist_archiver(config, temp_dir: Path):
 
 
 @pytest.fixture
-def mock_video_info() -> Dict[str, Any]:
+def mock_video_info() -> dict[str, Any]:
     """Mock video information for testing."""
     return {
         "id": "test_video_123",
@@ -220,7 +220,7 @@ def mock_video_info() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def mock_short_video_info() -> Dict[str, Any]:
+def mock_short_video_info() -> dict[str, Any]:
     """Mock short video information for testing."""
     return {
         "id": "test_short_456",

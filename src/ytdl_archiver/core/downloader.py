@@ -6,10 +6,9 @@ import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yt_dlp
-
 from tenacity import (
     before_sleep_log,
     retry,
@@ -68,28 +67,41 @@ class ProgressCallback:
         self.formatter = formatter
         self.current_video = None
 
-    def __call__(self, d: Dict[str, Any]) -> None:
+    def __call__(self, d: dict[str, Any]) -> None:
         """Handle yt-dlp progress callback."""
-        # Suppress all raw yt-dlp output by not processing any status that would generate it
         if d["status"] == "downloading" and self.formatter:
             title = d.get("info_dict", {}).get("title", "Unknown")
             if self.current_video != title:
                 self.current_video = title
-                # Show start of new download
-                start_msg = f"🔵 Starting download: {title}"
-                print(start_msg, flush=True)
+                # Start new progress bar
+                if hasattr(self.formatter, "start_video_progress"):
+                    self.formatter.start_video_progress(title)
+                else:
+                    # Fallback to old behavior
+                    start_msg = f"🔵 Starting download: {title}"
+                    print(start_msg, flush=True)
 
-            # Show progress during download - but suppress raw output
-            progress_msg = self.formatter.video_progress(
-                self.current_video,
-                {
-                    "percent": d.get("_percent_str", "0%"),
-                    "speed": d.get("_speed_str", ""),
-                    "eta": d.get("_eta_str", ""),
-                },
-            )
-            if progress_msg:
-                print(progress_msg, end="\r", flush=True)
+            # Update progress bar
+            if hasattr(self.formatter, "update_video_progress"):
+                self.formatter.update_video_progress(
+                    {
+                        "percent": d.get("_percent_str", "0%"),
+                        "speed": d.get("_speed_str", ""),
+                        "eta": d.get("_eta_str", ""),
+                    }
+                )
+            else:
+                # Fallback to old behavior
+                progress_msg = self.formatter.video_progress(
+                    self.current_video,
+                    {
+                        "percent": d.get("_percent_str", "0%"),
+                        "speed": d.get("_speed_str", ""),
+                        "eta": d.get("_eta_str", ""),
+                    },
+                )
+                if progress_msg:
+                    print(progress_msg, end="\r", flush=True)
 
         elif d["status"] == "finished" and self.formatter:
             if self.current_video:
@@ -104,8 +116,13 @@ class ProgressCallback:
                 if d.get("total_bytes_str"):
                     size = d.get("total_bytes_str", "")
 
-                # Clear the progress line and show completion
-                print(" " * 120, end="\r")  # Clear progress line
+                # Close progress bar and show completion
+                if hasattr(self.formatter, "close_video_progress"):
+                    self.formatter.close_video_progress()
+                else:
+                    # Fallback to old behavior
+                    print(" " * 120, end="\r")
+
                 complete_msg = self.formatter.video_complete(title, resolution, size)
                 print(complete_msg)
                 self.current_video = None
@@ -120,8 +137,8 @@ class YouTubeDownloader:
         self.ydl_opts = self._build_ydl_options()
 
     def _build_ydl_options(
-        self, playlist_config: Dict[str, Any] = None
-    ) -> Dict[str, Any]:
+        self, playlist_config: dict[str, Any] = None
+    ) -> dict[str, Any]:
         """Build yt-dlp options from configuration with playlist-specific overrides."""
         # Use empty dict if no playlist config provided
         if playlist_config is None:
@@ -172,7 +189,7 @@ class YouTubeDownloader:
 
         # Add JavaScript runtime handling to suppress warnings
         if self.formatter and hasattr(self.formatter, "js_runtime_warning"):
-            opts["extractor_args"] = "youtube:player_client=default"
+            opts["extractor_args"] = {"youtube": {"player_client": "default"}}
 
         # Remove None values to avoid yt-dlp issues
         opts = {k: v for k, v in opts.items() if v is not None}
@@ -191,7 +208,7 @@ class YouTubeDownloader:
         output_template: str,
         output_directory: Path,
         filename: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Download video with retry logic."""
         opts = self.ydl_opts.copy()
         opts["outtmpl"] = {
@@ -201,9 +218,12 @@ class YouTubeDownloader:
         }
 
         try:
-            # Disable progress hooks completely to prevent raw yt-dlp output
-            # We'll handle progress through our own monitoring
-            opts["progress_hooks"] = []
+            # Enable progress hooks for custom progress display
+            if self.formatter:
+                progress_callback = ProgressCallback(self.formatter)
+                opts["progress_hooks"] = [progress_callback]
+            else:
+                opts["progress_hooks"] = []
 
             # Ensure we suppress all raw output
             opts.update(
@@ -244,7 +264,7 @@ class YouTubeDownloader:
             raise DownloadError(f"Failed to download {video_url}: {e}")
         except Exception as e:
             if self.formatter:
-                self.formatter.error(f"Unexpected error downloading video - {str(e)}")
+                self.formatter.error(f"Unexpected error downloading video - {e!s}")
             else:
                 logger.error(
                     "Unexpected error during download",
@@ -253,7 +273,7 @@ class YouTubeDownloader:
                 )
             raise DownloadError(f"Unexpected error downloading {video_url}: {e}")
 
-    def get_metadata(self, video_url: str) -> Optional[Dict[str, Any]]:
+    def get_metadata(self, video_url: str) -> dict[str, Any] | None:
         """Get video metadata without downloading."""
         opts = {
             "quiet": True,
@@ -263,16 +283,15 @@ class YouTubeDownloader:
 
         # Add JavaScript runtime handling
         if self.formatter and hasattr(self.formatter, "js_runtime_warning"):
-            opts["extractor_args"] = "youtube:player_client=default"
+            opts["extractor_args"] = {"youtube": {"player_client": "default"}}
 
         try:
-            with suppress_output():
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    info_dict = ydl.extract_info(video_url, download=False)
-                    return info_dict
+            with suppress_output(), yt_dlp.YoutubeDL(opts) as ydl:
+                info_dict = ydl.extract_info(video_url, download=False)
+                return info_dict
         except Exception as e:
             if self.formatter:
-                self.formatter.error(f"Failed to get metadata - {str(e)}")
+                self.formatter.error(f"Failed to get metadata - {e!s}")
             else:
                 logger.error(
                     "Failed to get metadata", video_url=video_url, error=str(e)
@@ -283,8 +302,8 @@ class YouTubeDownloader:
         self,
         video_url: str,
         output_directory: Path,
-        playlist_config: Dict[str, Any] = None,
-    ) -> Dict[str, Any]:
+        playlist_config: dict[str, Any] = None,
+    ) -> dict[str, Any]:
         """Download video and handle directory structure based on metadata."""
         metadata = self.get_metadata(video_url)
         if metadata is None:
@@ -320,10 +339,9 @@ class YouTubeDownloader:
             return self.download_video_with_config_impl(
                 video_url, output_template, output_directory, filename, playlist_config
             )
-        else:
-            return self.download_video(
-                video_url, output_template, output_directory, filename
-            )
+        return self.download_video(
+            video_url, output_template, output_directory, filename
+        )
 
     def download_video_with_config_impl(
         self,
@@ -331,8 +349,8 @@ class YouTubeDownloader:
         output_template: str,
         output_directory: Path,
         filename: str,
-        playlist_config: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        playlist_config: dict[str, Any],
+    ) -> dict[str, Any]:
         """Download video with specific configuration."""
         opts = self._build_ydl_options(playlist_config)
         opts["outtmpl"] = {
@@ -355,11 +373,17 @@ class YouTubeDownloader:
         opts["progress_with_newline"] = False  # Don't add newlines to progress
         opts["xattr_set_filesize"] = False  # Don't show file size messages
 
+        # Enable progress hooks for custom progress display
+        if self.formatter:
+            progress_callback = ProgressCallback(self.formatter)
+            opts["progress_hooks"] = [progress_callback]
+        else:
+            opts["progress_hooks"] = []
+
         try:
-            with suppress_output():
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    info_dict = ydl.extract_info(video_url, download=True)
-                    return info_dict
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info_dict = ydl.extract_info(video_url, download=True)
+                return info_dict
         except DownloadError as e:
             logger.error("Download failed", video_url=video_url, error=str(e))
             raise DownloadError(f"Failed to download {video_url}: {e}")

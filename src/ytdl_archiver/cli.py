@@ -3,7 +3,6 @@
 import json
 import sys
 from pathlib import Path
-from typing import Optional
 
 import click
 import toml
@@ -50,7 +49,7 @@ except ImportError:
 @click.pass_context
 def cli(
     ctx: click.Context,
-    config: Optional[Path],
+    config: Path | None,
     verbose: bool,
     quiet: bool,
     no_color: bool,
@@ -100,9 +99,7 @@ def cli(
     help="Archive directory path",
 )
 @click.pass_context
-def archive(
-    ctx: click.Context, playlists: Optional[Path], directory: Optional[Path]
-) -> None:
+def archive(ctx: click.Context, playlists: Path | None, directory: Path | None) -> None:
     """Archive YouTube playlists."""
     try:
         config = ctx.obj["config"]
@@ -135,7 +132,7 @@ def archive(
         formatter.error("Operation cancelled by user")
         sys.exit(130)
     except Exception as e:
-        formatter.error(f"Archive failed - {str(e)}")
+        formatter.error(f"Archive failed - {e!s}")
         sys.exit(1)
 
 
@@ -152,14 +149,14 @@ def archive(
     type=click.Path(path_type=Path),
     help="Output TOML playlists file",
 )
-def convert_playlists(input: Path, output: Optional[Path]) -> None:
+def convert_playlists(input: Path, output: Path | None) -> None:
     """Convert JSON playlists file to TOML format."""
     try:
         if output is None:
             output = input.with_suffix(".toml")
 
         # Load JSON playlists
-        with open(input, "r") as f:
+        with open(input) as f:
             playlists = json.load(f)
 
         # Convert to TOML format
@@ -183,7 +180,7 @@ def convert_playlists(input: Path, output: Optional[Path]) -> None:
     type=click.Path(path_type=Path),
     help="Output path for configuration file",
 )
-def init_config(output: Optional[Path]) -> None:
+def init_config(output: Path | None) -> None:
     """Initialize configuration file."""
     if output is None:
         output = Path.home() / ".config" / "ytdl-archiver" / "config.toml"
@@ -196,7 +193,7 @@ def init_config(output: Optional[Path]) -> None:
     defaults_path = Path(__file__).parent / "config" / "defaults.toml"
 
     try:
-        with open(defaults_path, "r") as f:
+        with open(defaults_path) as f:
             default_config = toml.load(f)
 
         with open(output, "w") as f:
