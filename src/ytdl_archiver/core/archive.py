@@ -6,7 +6,7 @@ import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Set
+from typing import Any
 
 from ..exceptions import ArchiveError
 
@@ -46,14 +46,14 @@ class ArchiveTracker:
 
     def __init__(self, archive_file: Path):
         self.archive_file = archive_file
-        self.downloaded_videos: Set[str] = set()
+        self.downloaded_videos: set[str] = set()
         self.load_archive()
 
     def load_archive(self) -> None:
         """Load existing archive file."""
         try:
             if self.archive_file.exists():
-                with open(self.archive_file, "r") as f:
+                with open(self.archive_file) as f:
                     lines = f.read().splitlines()
                     self.downloaded_videos = set(
                         line.strip() for line in lines if line.strip()
@@ -107,7 +107,7 @@ class PlaylistArchiver:
         from .downloader import YouTubeDownloader
         from .metadata import MetadataGenerator
 
-        self.downloader = YouTubeDownloader(self.config)
+        self.downloader = YouTubeDownloader(self.config, self.formatter)
         self.metadata_generator = MetadataGenerator(self.config)
 
     def process_playlist(self, playlist_id: str, playlist_path: str) -> None:
@@ -215,7 +215,7 @@ class PlaylistArchiver:
                 if self.formatter:
                     print(
                         self.formatter.error(
-                            f"Failed to download {entry.get('title', 'Unknown')} - {str(e)}"
+                            f"Failed to download {entry.get('title', 'Unknown')} - {e!s}"
                         )
                     )
                 else:
@@ -233,7 +233,7 @@ class PlaylistArchiver:
                 downloaded_count=tracker.get_downloaded_count(),
             )
 
-    def _get_playlist_info(self, playlist_url: str) -> Dict[str, Any]:
+    def _get_playlist_info(self, playlist_url: str) -> dict[str, Any]:
         """Get playlist information."""
         opts = {
             "extract_flat": True,
@@ -257,9 +257,8 @@ class PlaylistArchiver:
         try:
             import yt_dlp
 
-            with suppress_output():
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    return ydl.extract_info(playlist_url, download=False)
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                return ydl.extract_info(playlist_url, download=False)
         except Exception as e:
             logger.error(
                 "Failed to get playlist info", playlist_url=playlist_url, error=str(e)
@@ -267,7 +266,7 @@ class PlaylistArchiver:
             return {}
 
     def _generate_nfo_if_needed(
-        self, metadata: Dict[str, Any], output_directory: Path
+        self, metadata: dict[str, Any], output_directory: Path
     ) -> None:
         """Generate NFO file if enabled."""
         if not self.config.get("media_server.generate_nfo", True):
@@ -308,7 +307,7 @@ class PlaylistArchiver:
             playlists = self.config.load_playlists()
         except Exception as e:
             if self.formatter:
-                self.formatter.error(f"Failed to load playlists - {str(e)}")
+                self.formatter.error(f"Failed to load playlists - {e!s}")
             else:
                 logger.error("Failed to load playlists", error=str(e))
             raise ArchiveError(f"Failed to load playlists: {e}")

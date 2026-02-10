@@ -9,15 +9,6 @@ authors = [
     {name = "Ben Chitty", email = "htmlgxn@protonmail.com"},
 ]
 keywords = ["youtube", "archiver", "media-server", "jellyfin", "emby"]
-classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.14",
-    "Topic :: Multimedia :: Video",
-    "Topic :: System :: Archiving",
-]
 dependencies = [
     "yt-dlp==2026.2.4",
     "yt-dlp-ejs==0.3.1",
@@ -29,16 +20,15 @@ dependencies = [
     "tqdm>=4.66.0,<5.0.0",
     "colorama>=0.4.6,<0.5.0",
 ]
-optional-dependencies = {dev = [
+[dependency-groups]
+dev = [
+    "ruff>=0.15.0",
+    "ty>=0.0.15",
     "pytest>=8.3.0,<9.0.0",
     "pytest-cov>=6.0.0,<7.0.0",
     "pytest-mock>=3.14.0,<4.0.0",
-    "black>=24.10.0,<25.0.0",
-    "isort>=5.13.0,<6.0.0",
-    "flake8>=7.1.0,<8.0.0",
-    "mypy>=1.13.0,<2.0.0",
     "pre-commit>=4.0.0,<5.0.0",
-]}
+]
 
 [project.scripts]
 ytdl-archiver = "ytdl_archiver.cli:main"
@@ -54,21 +44,20 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/ytdl_archiver"]
 
-# Keep your existing tool configurations (uv respects these)
-[tool.black]
+[tool.ruff]
 line-length = 88
-target-version = ["py314"]
+target-version = "py314"
 
-[tool.isort]
-profile = "black"
-line_length = 88
-multi_line_output = 3
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RET", "RSE", "ARG", "PTH", "TRY", "PGH", "RUF"]
+ignore = ["E501", "TRY003", "TRY300"]
 
-[tool.mypy]
-python_version = "3.14"
-warn_return_any = true
-strict_optional = true
-disallow_untyped_defs = true
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ty.rules]
+unresolved-attribute = "ignore"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

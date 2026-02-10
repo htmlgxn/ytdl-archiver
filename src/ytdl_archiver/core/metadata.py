@@ -1,7 +1,7 @@
 """Metadata generation for media servers."""
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from ..exceptions import MetadataError
 
@@ -21,7 +21,7 @@ class MetadataGenerator:
     def __init__(self, config):
         self.config = config
 
-    def create_nfo_file(self, metadata: Dict[str, Any], nfo_path: Path) -> None:
+    def create_nfo_file(self, metadata: dict[str, Any], nfo_path: Path) -> None:
         """Create an NFO file from video metadata."""
         try:
             nfo_content = self._generate_nfo_content(metadata)
@@ -35,7 +35,7 @@ class MetadataGenerator:
             logger.error("Error writing NFO file", nfo_path=str(nfo_path), error=str(e))
             raise MetadataError(f"Error writing NFO file {nfo_path}: {e}")
 
-    def _generate_nfo_content(self, metadata: Dict[str, Any]) -> str:
+    def _generate_nfo_content(self, metadata: dict[str, Any]) -> str:
         """Generate NFO content from metadata."""
         title = metadata.get("title", "Unknown Title")
         channel = metadata.get("uploader", "Unknown Channel")
@@ -62,16 +62,15 @@ class MetadataGenerator:
                 description,
                 duration,
             )
-        else:
-            return self._generate_emby_nfo(
-                title,
-                video_id,
-                channel,
-                formatted_date,
-                upload_year,
-                description,
-                duration,
-            )
+        return self._generate_emby_nfo(
+            title,
+            video_id,
+            channel,
+            formatted_date,
+            upload_year,
+            description,
+            duration,
+        )
 
     def _generate_kodi_nfo(
         self,

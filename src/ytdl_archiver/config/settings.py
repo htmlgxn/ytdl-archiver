@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import structlog
 import toml
@@ -15,9 +15,9 @@ logger = structlog.get_logger()
 class Config:
     """Configuration manager for ytdl-archiver."""
 
-    def __init__(self, config_path: Optional[Path] = None):
+    def __init__(self, config_path: Path | None = None):
         self.config_path = config_path or self._get_default_config_path()
-        self._config: Dict[str, Any] = {}
+        self._config: dict[str, Any] = {}
 
         # Migration: Move playlists file from CWD to config dir if found
         cwd_toml = Path("playlists.toml")
@@ -72,7 +72,7 @@ class Config:
         else:
             logger.info("No user configuration found, using defaults")
 
-    def _merge_config(self, base: Dict[str, Any], override: Dict[str, Any]) -> None:
+    def _merge_config(self, base: dict[str, Any], override: dict[str, Any]) -> None:
         """Recursively merge configuration dictionaries."""
         for key, value in override.items():
             if key in base and isinstance(base[key], dict) and isinstance(value, dict):
@@ -111,10 +111,9 @@ class Config:
 
         if toml_file.exists():
             return toml_file
-        elif json_file.exists():
+        if json_file.exists():
             return json_file
-        else:
-            return toml_file  # Default to TOML for new installations
+        return toml_file  # Default to TOML for new installations
 
     def ensure_playlists_file(self) -> None:
         """Create a skeleton playlists.toml file if it doesn't exist."""
@@ -140,7 +139,7 @@ path = "My Playlist"
             playlists_file.write_text(skeleton.strip() + "\n")
             logger.info("Created skeleton playlists file", path=str(playlists_file))
 
-    def load_playlists(self) -> List[Dict[str, Any]]:
+    def load_playlists(self) -> list[dict[str, Any]]:
         """Load playlists from file with playlist-specific overrides."""
         playlists_file = self.get_playlists_file()
 
@@ -154,13 +153,13 @@ path = "My Playlist"
 
         try:
             if playlists_file.suffix.lower() == ".toml":
-                with open(playlists_file, "r", encoding="utf-8") as f:
+                with open(playlists_file, encoding="utf-8") as f:
                     playlists_data = toml.load(f)
                     # FIX: Changed from "playlist"to"playlists" (plural)
                     return playlists_data.get("playlists", [])
             else:
                 # Legacy JSON handling...
-                with open(playlists_file, "r", encoding="utf-8") as f:
+                with open(playlists_file, encoding="utf-8") as f:
                     playlists = json.load(f)
                     return [
                         {"id": p.get("id"), "path": p.get("path")} for p in playlists
@@ -168,7 +167,7 @@ path = "My Playlist"
         except Exception as e:
             raise ConfigurationError(f"Failed to load playlists: {e}")
 
-    def get_playlist_config(self, playlist_id: str) -> Dict[str, Any]:
+    def get_playlist_config(self, playlist_id: str) -> dict[str, Any]:
         """Get merged configuration for a specific playlist."""
         playlists = self.load_playlists()
 

@@ -97,9 +97,7 @@ class TestArchiveTracker:
     def test_mark_downloaded_permission_error(self, archive_tracker, mocker):
         """Test marking downloaded with permission error."""
         # Mock open to raise permission error
-        mocker.patch(
-            "builtins.open", side_effect=PermissionError("Permission denied")
-        )
+        mocker.patch("builtins.open", side_effect=PermissionError("Permission denied"))
 
         with pytest.raises(ArchiveError, match="Failed to mark video as downloaded"):
             archive_tracker.mark_downloaded("test_video")
