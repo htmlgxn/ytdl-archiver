@@ -1,13 +1,12 @@
 """Tests for custom exceptions."""
 
-import pytest
-
 from ytdl_archiver.exceptions import (
-    YTDLArchiverError,
-    DownloadError,
     ArchiveError,
-    MetadataError,
     ConfigurationError,
+    CookieRefreshError,
+    DownloadError,
+    MetadataError,
+    YTDLArchiverError,
 )
 
 
@@ -50,6 +49,7 @@ class TestExceptions:
         assert issubclass(ArchiveError, YTDLArchiverError)
         assert issubclass(MetadataError, YTDLArchiverError)
         assert issubclass(ConfigurationError, YTDLArchiverError)
+        assert issubclass(CookieRefreshError, YTDLArchiverError)
 
     def test_exception_message_formatting(self):
         """Test exception messages."""

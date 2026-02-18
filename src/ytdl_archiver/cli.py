@@ -9,6 +9,7 @@ import toml
 
 from .config.settings import Config
 from .core.archive import PlaylistArchiver
+from .core.cookies import SUPPORTED_BROWSERS, BrowserCookieRefresher
 from .core.utils import setup_logging
 from .output import detect_output_mode, should_use_colors
 
@@ -98,8 +99,24 @@ def cli(
     type=click.Path(path_type=Path),
     help="Archive directory path",
 )
+@click.option(
+    "--cookies-browser",
+    type=click.Choice(SUPPORTED_BROWSERS, case_sensitive=False),
+    help="Browser to refresh cookies from before archive",
+)
+@click.option(
+    "--cookies-profile",
+    type=str,
+    help="Browser profile name or full profile path for cookie extraction",
+)
 @click.pass_context
-def archive(ctx: click.Context, playlists: Path | None, directory: Path | None) -> None:
+def archive(
+    ctx: click.Context,
+    playlists: Path | None,
+    directory: Path | None,
+    cookies_browser: str | None,
+    cookies_profile: str | None,
+) -> None:
     """Archive YouTube playlists."""
     formatter = None
     try:
@@ -126,7 +143,36 @@ def archive(ctx: click.Context, playlists: Path | None, directory: Path | None) 
         # Print header
         print(formatter.header("2026.2.7"))
 
-        archiver = PlaylistArchiver(config, formatter)
+        cookie_refresher = None
+        skip_initial_cookie_refresh = False
+        normalized_browser = cookies_browser.lower() if cookies_browser else None
+
+        if normalized_browser:
+            cookie_refresher = BrowserCookieRefresher()
+            cookie_target = config.get_cookie_file_target_path()
+            try:
+                cookie_refresher.refresh_to_file(
+                    normalized_browser,
+                    cookies_profile,
+                    cookie_target,
+                )
+                skip_initial_cookie_refresh = True
+            except Exception as e:
+                message = formatter.error(
+                    f"Cookie refresh failed at startup (browser={normalized_browser}) - {e!s}"
+                )
+                if message:
+                    click.echo(message, err=True)
+                sys.exit(1)
+
+        archiver = PlaylistArchiver(
+            config,
+            formatter,
+            cookie_refresher=cookie_refresher,
+            cookie_browser=normalized_browser,
+            cookie_profile=cookies_profile,
+            skip_initial_cookie_refresh=skip_initial_cookie_refresh,
+        )
         archiver.run()  # Will now safely load playlists from config directory
 
     except KeyboardInterrupt:

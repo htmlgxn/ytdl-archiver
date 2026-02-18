@@ -7,6 +7,7 @@ from typing import Any
 
 from ..exceptions import ArchiveError
 from ..output import emit_formatter_message, emit_rendered
+from .cookies import BrowserCookieRefresher
 
 # Suppress yt-dlp's own logger to prevent unwanted output
 yt_dlp_logger = logging.getLogger("yt_dlp")
@@ -76,9 +77,21 @@ class ArchiveTracker:
 class PlaylistArchiver:
     """Main archiver class for processing playlists."""
 
-    def __init__(self, config, formatter=None):
+    def __init__(
+        self,
+        config,
+        formatter=None,
+        cookie_refresher: BrowserCookieRefresher | None = None,
+        cookie_browser: str | None = None,
+        cookie_profile: str | None = None,
+        skip_initial_cookie_refresh: bool = False,
+    ):
         self.config = config
         self.formatter = formatter
+        self.cookie_refresher = cookie_refresher
+        self.cookie_browser = cookie_browser.strip().lower() if cookie_browser else None
+        self.cookie_profile = cookie_profile
+        self.skip_initial_cookie_refresh = skip_initial_cookie_refresh
         self.downloader = None
         self.metadata_generator = None
 
@@ -96,6 +109,39 @@ class PlaylistArchiver:
     def _emit_formatter_message(self, level: str, message: str) -> None:
         """Print formatter messages consistently."""
         emit_formatter_message(self.formatter, level, message)
+
+    def _refresh_cookies(self, stage: str) -> None:
+        """Refresh cookies from browser if refresh settings are enabled."""
+        if not self.cookie_refresher or not self.cookie_browser:
+            return
+
+        cookie_path = self.config.get_cookie_file_target_path()
+        try:
+            self.cookie_refresher.refresh_to_file(
+                self.cookie_browser,
+                self.cookie_profile,
+                cookie_path,
+            )
+            logger.info(
+                "Refreshed browser cookies",
+                stage=stage,
+                browser=self.cookie_browser,
+                cookie_file=str(cookie_path),
+            )
+        except Exception as e:
+            message = (
+                f"Cookie refresh failed at {stage} "
+                f"(browser={self.cookie_browser}) - {e!s}"
+            )
+            self._emit_formatter_message("error", message)
+            logger.error(
+                "Cookie refresh failed",
+                stage=stage,
+                browser=self.cookie_browser,
+                cookie_file=str(cookie_path),
+                error=str(e),
+            )
+            raise ArchiveError(message) from e
 
     def process_playlist(self, playlist_id: str, playlist_path: str) -> None:
         """Process a single playlist."""
@@ -301,6 +347,9 @@ class PlaylistArchiver:
 
     def run(self) -> None:
         """Run the archiver with playlists from file."""
+        if not self.skip_initial_cookie_refresh:
+            self._refresh_cookies("startup")
+
         playlists_file = self.config.get_playlists_file()
 
         if not playlists_file.exists():
@@ -342,6 +391,8 @@ class PlaylistArchiver:
                 else:
                     logger.warning("Invalid playlist entry", playlist=playlist)
                 continue
+
+            self._refresh_cookies(f"before playlist {playlist_path}")
 
             try:
                 self.process_playlist(playlist_id, playlist_path)
