@@ -52,6 +52,23 @@ def _existing_local_binaries_by_newest() -> list[Path]:
     )
 
 
+def _latest_ratatui_source_mtime() -> float:
+    crate_dir = _manifest_path().parent
+    paths = [
+        _manifest_path(),
+        crate_dir / "Cargo.lock",
+        _repo_root() / "scripts" / "stage_setup_tui_binary.py",
+    ]
+    src_dir = crate_dir / "src"
+    paths.extend(src_dir.rglob("*.rs"))
+    mtimes = [path.stat().st_mtime for path in paths if path.exists()]
+    return max(mtimes, default=0.0)
+
+
+def _local_binary_is_stale(binary: Path) -> bool:
+    return binary.stat().st_mtime < _latest_ratatui_source_mtime()
+
+
 def _packaged_binary_candidates() -> list[Traversable]:
     package_files = resources.files(_BINARY_PACKAGE)
     os_name = (
@@ -175,17 +192,38 @@ def _resolve_ratatui_binary(stack: ExitStack) -> Path:
         _ensure_executable(override_path)
         return override_path
 
+    # In source/dev checkouts, prefer freshly built local binaries over any
+    # previously staged packaged binary to avoid stale TUI behavior.
+    autobuild = _autobuild_enabled()
+    local_candidates = _existing_local_binaries_by_newest()
+    stale_found = False
+    for candidate in local_candidates:
+        if autobuild and _local_binary_is_stale(candidate):
+            stale_found = True
+            continue
+        _ensure_executable(candidate)
+        return candidate
+
+    if stale_found:
+        timeout_seconds = _build_timeout_seconds()
+        _attempt_autobuild_binary(timeout_seconds)
+        rebuilt_candidates = _existing_local_binaries_by_newest()
+        for candidate in rebuilt_candidates:
+            if _local_binary_is_stale(candidate):
+                continue
+            _ensure_executable(candidate)
+            return candidate
+        if rebuilt_candidates:
+            _ensure_executable(rebuilt_candidates[0])
+            return rebuilt_candidates[0]
+
     for candidate in _packaged_binary_candidates():
         if candidate.is_file():
             packaged_path = stack.enter_context(resources.as_file(candidate))
             _ensure_executable(packaged_path)
             return packaged_path
 
-    for candidate in _existing_local_binaries_by_newest():
-        _ensure_executable(candidate)
-        return candidate
-
-    if _autobuild_enabled():
+    if autobuild:
         timeout_seconds = _build_timeout_seconds()
         _attempt_autobuild_binary(timeout_seconds)
         for candidate in _packaged_binary_candidates():

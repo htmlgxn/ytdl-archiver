@@ -214,6 +214,96 @@ def test_run_ratatui_setup_uses_packaged_binary_candidate(monkeypatch, temp_dir)
     assert command[0] == str(fake_bin)
 
 
+def test_run_ratatui_setup_prefers_local_binary_over_packaged(monkeypatch, temp_dir):
+    """Bridge should prefer local builds over packaged binaries in source checkouts."""
+    local_bin = temp_dir / "local-setup-ui"
+    packaged_bin = temp_dir / "packaged-setup-ui"
+    local_bin.write_text("")
+    packaged_bin.write_text("")
+    monkeypatch.delenv("YTDL_ARCHIVER_SETUP_TUI_BIN", raising=False)
+    monkeypatch.setattr(
+        "ytdl_archiver.setup.ratatui_bridge._binary_candidates",
+        lambda: [local_bin],
+    )
+    monkeypatch.setattr(
+        "ytdl_archiver.setup.ratatui_bridge._packaged_binary_candidates",
+        lambda: [packaged_bin],
+    )
+    monkeypatch.setattr(
+        "ytdl_archiver.setup.ratatui_bridge.resources.as_file",
+        lambda candidate: nullcontext(candidate),
+    )
+    payload = {
+        "archive_directory": "/tmp/media",
+        "cookie_source": "browser",
+        "cookie_browser": "firefox",
+        "cookie_profile": "",
+        "write_subtitles": True,
+        "write_thumbnail": True,
+        "generate_nfo": True,
+    }
+    fake_run = Mock(
+        return_value=subprocess.CompletedProcess(args=[str(local_bin)], returncode=0)
+    )
+    monkeypatch.setattr("ytdl_archiver.setup.ratatui_bridge.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "ytdl_archiver.setup.ratatui_bridge.tempfile.TemporaryDirectory",
+        _FakeTempDir.from_payload(temp_dir, payload),
+    )
+
+    run_ratatui_setup(SetupAnswers())
+
+    command = fake_run.call_args.args[0]
+    assert command[0] == str(local_bin)
+
+
+def test_run_ratatui_setup_rebuilds_stale_local_binary(monkeypatch, temp_dir):
+    """Stale local binaries should trigger autobuild before running setup."""
+    stale_bin = temp_dir / "stale-setup-ui"
+    fresh_bin = temp_dir / "fresh-setup-ui"
+    stale_bin.write_text("")
+    monkeypatch.delenv("YTDL_ARCHIVER_SETUP_TUI_BIN", raising=False)
+    monkeypatch.setenv("YTDL_ARCHIVER_SETUP_TUI_AUTOBUILD", "1")
+    monkeypatch.setattr(
+        "ytdl_archiver.setup.ratatui_bridge._binary_candidates",
+        lambda: [stale_bin, fresh_bin],
+    )
+    monkeypatch.setattr(
+        "ytdl_archiver.setup.ratatui_bridge._packaged_binary_candidates",
+        lambda: [],
+    )
+    monkeypatch.setattr(
+        "ytdl_archiver.setup.ratatui_bridge._local_binary_is_stale",
+        lambda candidate: candidate == stale_bin,
+    )
+    monkeypatch.setattr(
+        "ytdl_archiver.setup.ratatui_bridge._attempt_autobuild_binary",
+        lambda _timeout: fresh_bin.write_text(""),
+    )
+    payload = {
+        "archive_directory": "/tmp/media",
+        "cookie_source": "browser",
+        "cookie_browser": "firefox",
+        "cookie_profile": "",
+        "write_subtitles": True,
+        "write_thumbnail": True,
+        "generate_nfo": True,
+    }
+    fake_run = Mock(
+        return_value=subprocess.CompletedProcess(args=[str(fresh_bin)], returncode=0)
+    )
+    monkeypatch.setattr("ytdl_archiver.setup.ratatui_bridge.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "ytdl_archiver.setup.ratatui_bridge.tempfile.TemporaryDirectory",
+        _FakeTempDir.from_payload(temp_dir, payload),
+    )
+
+    run_ratatui_setup(SetupAnswers())
+
+    command = fake_run.call_args.args[0]
+    assert command[0] == str(fresh_bin)
+
+
 def test_run_ratatui_setup_attempts_autobuild_when_no_binary(monkeypatch, temp_dir):
     """Bridge tries autobuild path and then runs the newly-available binary."""
     fake_bin = temp_dir / "built-setup-ui"

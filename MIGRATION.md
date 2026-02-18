@@ -1,10 +1,10 @@
 # Migration Guide: Legacy Setup to Current CLI
 
-This guide covers migration from older `archive.py`/JSON-style setups to the current command-based CLI and TOML-first configuration.
+This file is intentionally minimal and only documents migration deltas from older `archive.py`/JSON-first workflows.
 
-## Breaking/Behavioral Changes
+## What changed
 
-### 1. Entry point changed
+### Entry point changed
 Before:
 ```bash
 python archive.py -j playlists.json -d /path/to/archive
@@ -15,120 +15,37 @@ After:
 uv run ytdl-archiver archive -p /path/to/playlists.toml -d /path/to/archive
 ```
 
-### 2. Configuration moved to TOML
-Before: hardcoded/script-level values.
+### Configuration moved to TOML in config directory
+- Primary config: `~/.config/ytdl-archiver/config.toml`
+- Default playlist file: `~/.config/ytdl-archiver/playlists.toml`
+- Legacy JSON remains supported: `~/.config/ytdl-archiver/playlists.json`
 
-After: merged defaults + user config in `~/.config/ytdl-archiver/config.toml`.
+### Playlists migration from working directory
+On startup, if `playlists.toml` or `playlists.json` exists in the current working directory and config-dir `playlists.toml` does not, the file is moved into the config directory.
 
-### 3. Playlists are config-dir based by default
-Current lookup order:
-1. Explicit `--playlists` value
-2. `~/.config/ytdl-archiver/playlists.toml`
-3. `~/.config/ytdl-archiver/playlists.json` (legacy)
-4. fallback target path `~/.config/ytdl-archiver/playlists.toml`
+### Setup UI behavior
+First-run setup uses a Rust `ratatui` wizard with a centered one-page progressive form in normal terminals, and a paged step-by-step fallback in small terminals.
 
-Startup migration behavior:
-- If `playlists.toml` or `playlists.json` exists in the working directory and config-dir `playlists.toml` does not, the file is moved into the config directory.
-
-## Migration Steps
-
-### Step 1: Install dependencies
+## Minimal migration steps
+1. Install/sync environment:
 ```bash
-git clone https://github.com/htmlgxn/ytdl-archiver.git
-cd ytdl-archiver
 uv sync --dev
 ```
-
-### Step 2: Initialize config
+2. Initialize or trigger setup:
 ```bash
 uv run ytdl-archiver init
 ```
-You can also trigger first-run setup by running:
-```bash
-uv run ytdl-archiver archive
-```
-when `~/.config/ytdl-archiver/config.toml` does not exist.
-
-First-run setup now uses a Rust `ratatui` wizard (one step per screen).
-If the setup binary is missing or fails, CLI prompt fallback is used automatically.
-Build the setup binary before first use:
-```bash
-cargo build --manifest-path rust/setup_tui/Cargo.toml --release
-```
-
-Keyboard controls in the wizard:
-- `j/k` or arrows: move
-- `Enter`: confirm / next
-- `b`: back
-- `Esc` / `q`: cancel
-
-### Step 3: Move/convert playlists
-Option A (recommended): convert legacy JSON to TOML.
+3. Convert legacy playlists JSON if needed:
 ```bash
 uv run ytdl-archiver convert-playlists -i playlists.json -o playlists.toml
 ```
-
-Option B: continue using JSON (legacy supported).
-
-### Step 4: Run archive
+4. Run archive:
 ```bash
 uv run ytdl-archiver archive
 ```
 
-## Config Mapping (Legacy -> Current)
-
-| Legacy idea | Global config key (snake_case) | yt-dlp option key | Playlist override keys accepted |
-|---|---|---|---|
-| Subtitles on/off | `download.write_subtitles` | `writesubtitles` | `writesubtitles` or `write_subtitles` |
-| Subtitle format | `download.subtitle_format` | `subtitlesformat` | `subtitlesformat` or `subtitle_format` |
-| Subtitle conversion | `download.convert_subtitles` | `convertsubtitles` | `convertsubtitles` or `convert_subtitles` |
-| Subtitle languages | `download.subtitle_languages` | `subtitleslangs` | `subtitleslangs` or `subtitle_languages` |
-| Thumbnail on/off | `download.write_thumbnail` | `writethumbnail` | `writethumbnail` or `write_thumbnail` |
-| Container format | `download.merge_output_format` | `merge_output_format` | `merge_output_format` |
-| Video format selection | `download.format` | `format` | `format` |
-
-## CLI Surface (current)
-
-### Top-level
-```bash
-uv run ytdl-archiver --help
-```
-Commands:
-- `archive`
-- `convert-playlists`
-- `init`
-
-Global options:
-- `-c, --config PATH`
-- `-v, --verbose`
-- `-q, --quiet`
-- `--no-color`
-
-### Archive command
-```bash
-uv run ytdl-archiver archive --help
-```
-Options:
-- `-p, --playlists PATH`
-- `-d, --directory PATH`
-- `--cookies-browser [firefox|chrome|chromium|brave|edge|opera|vivaldi|whale|safari]`
-- `--cookies-profile TEXT`
-
-## systemd migration note
-If migrating from a direct Python script service, switch `ExecStart` to command form:
-```ini
-ExecStart=uv run ytdl-archiver archive
-WorkingDirectory=/home/username/ytdl-archiver
-```
-
-## Troubleshooting
-
-### Validate command availability
-```bash
-uv run ytdl-archiver --help
-```
-
-### Re-sync environment
-```bash
-uv sync --dev
-```
+## Reference docs
+- Quickstart: `README.md`
+- CLI reference: `docs/cli.md`
+- Configuration reference: `docs/configuration.md`
+- Development: `docs/development.md`

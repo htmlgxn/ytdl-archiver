@@ -1,0 +1,145 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+jobs:
+  build-setup-binary:
+    name: setup-binary (${{ matrix.platform_tag }})
+    runs-on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs_on: ubuntu-latest
+            platform_tag: linux-x86_64
+          - runs_on: ubuntu-24.04-arm
+            platform_tag: linux-aarch64
+          - runs_on: macos-13
+            platform_tag: macos-x86_64
+          - runs_on: macos-14
+            platform_tag: macos-aarch64
+          - runs_on: windows-latest
+            platform_tag: windows-x86_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: latest
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build setup binary
+        run: cargo build --manifest-path rust/setup_tui/Cargo.toml --release
+
+      - name: Stage setup binary
+        run: python scripts/stage_setup_tui_binary.py
+
+      - name: Upload staged setup binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-binary-${{ matrix.platform_tag }}
+          path: src/ytdl_archiver/setup/bin/ytdl-archiver-setup-tui-${{ matrix.platform_tag }}*
+          if-no-files-found: error
+
+  build-distributions:
+    name: build-distributions
+    runs-on: ubuntu-latest
+    needs: build-setup-binary
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: latest
+
+      - name: Download setup binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: setup-binary-*
+          path: /tmp/setup-binaries
+          merge-multiple: true
+
+      - name: Copy setup binaries into package
+        shell: bash
+        run: |
+          mkdir -p src/ytdl_archiver/setup/bin
+          cp /tmp/setup-binaries/ytdl-archiver-setup-tui-* src/ytdl_archiver/setup/bin/
+          chmod +x src/ytdl_archiver/setup/bin/ytdl-archiver-setup-tui-* || true
+          ls -la src/ytdl_archiver/setup/bin
+
+      - name: Build wheel and sdist
+        run: uv build --wheel --sdist
+
+      - name: Verify wheel contains all setup binaries
+        shell: bash
+        run: |
+          python - <<'PY'
+          import glob
+          import zipfile
+
+          wheels = sorted(glob.glob("dist/*.whl"))
+          if not wheels:
+              raise SystemExit("No wheel built")
+          wheel = wheels[-1]
+          expected = {
+              "ytdl_archiver/setup/bin/ytdl-archiver-setup-tui-linux-x86_64",
+              "ytdl_archiver/setup/bin/ytdl-archiver-setup-tui-linux-aarch64",
+              "ytdl_archiver/setup/bin/ytdl-archiver-setup-tui-macos-x86_64",
+              "ytdl_archiver/setup/bin/ytdl-archiver-setup-tui-macos-aarch64",
+              "ytdl_archiver/setup/bin/ytdl-archiver-setup-tui-windows-x86_64.exe",
+          }
+          with zipfile.ZipFile(wheel) as zf:
+              names = set(zf.namelist())
+          missing = sorted(expected - names)
+          if missing:
+              raise SystemExit(f"Missing bundled setup binaries in wheel: {missing}")
+          print("Wheel binary bundle check passed:", wheel)
+          PY
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
+
+  publish-pypi:
+    name: publish-pypi
+    runs-on: ubuntu-latest
+    needs: build-distributions
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: pypi
+      url: https://pypi.org/p/ytdl-archiver
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
