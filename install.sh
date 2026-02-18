@@ -47,8 +47,23 @@ run_with_sudo() {
   return 1
 }
 
-install_firefox() {
+is_firefox_installed() {
   if command -v firefox >/dev/null 2>&1; then
+    return 0
+  fi
+
+  # macOS app-bundle installs typically don't provide a PATH binary.
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    if [[ -d "/Applications/Firefox.app" || -d "$HOME/Applications/Firefox.app" ]]; then
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+install_firefox() {
+  if is_firefox_installed; then
     echo "Firefox already installed."
     return 0
   fi
@@ -56,7 +71,13 @@ install_firefox() {
   case "$(uname -s)" in
     Darwin)
       if command -v brew >/dev/null 2>&1; then
-        brew install --cask firefox
+        # brew can fail (network/permissions/toolchain). Do not fail the full installer.
+        if ! brew list --cask firefox >/dev/null 2>&1; then
+          if ! brew install --cask firefox; then
+            echo "Warning: Firefox install failed. Install manually from https://www.mozilla.org/firefox/."
+            return 0
+          fi
+        fi
       else
         echo "Homebrew not found. Install Firefox manually from https://www.mozilla.org/firefox/."
       fi
@@ -109,19 +130,27 @@ export PATH="$HOME/.local/bin:$PATH"
 
 echo
 echo "Install complete!"
-echo "Launching ${PACKAGE_NAME}..."
+echo "Launching ${PACKAGE_NAME} setup..."
 
 set +e
 if command -v "${PACKAGE_NAME}" >/dev/null 2>&1; then
-  "${PACKAGE_NAME}" archive
+  if [[ -r /dev/tty ]]; then
+    "${PACKAGE_NAME}" init </dev/tty >/dev/tty 2>/dev/tty
+  else
+    "${PACKAGE_NAME}" init
+  fi
 else
-  uv tool run "${PACKAGE_NAME}" archive
+  if [[ -r /dev/tty ]]; then
+    uv tool run "${PACKAGE_NAME}" init </dev/tty >/dev/tty 2>/dev/tty
+  else
+    uv tool run "${PACKAGE_NAME}" init
+  fi
 fi
 launch_exit=$?
 set -e
 
 if [[ "${launch_exit}" -ne 0 ]]; then
   echo
-  echo "${PACKAGE_NAME} exited with status ${launch_exit}. You can retry with:"
-  echo "  ${PACKAGE_NAME}"
+  echo "${PACKAGE_NAME} setup exited with status ${launch_exit}. You can retry with:"
+  echo "  ${PACKAGE_NAME} init"
 fi
