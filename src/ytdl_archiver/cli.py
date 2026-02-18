@@ -69,14 +69,14 @@ def cli(
 
         # Configure logging based on mode
         if verbose:
-            ctx.obj["config"]._config["logging"]["level"] = "DEBUG"
+            ctx.obj["config"].set_logging_level("DEBUG")
         elif quiet:
-            ctx.obj["config"]._config["logging"]["level"] = "ERROR"
+            ctx.obj["config"].set_logging_level("ERROR")
 
         # Setup appropriate logging - no console output for clean formatter experience
         # Only enable console logging for verbose mode or errors
         console_output = verbose or ctx.obj.get("output_mode") == "verbose"
-        setup_logging(ctx.obj["config"]._config, console_output=console_output)
+        setup_logging(ctx.obj["config"].as_dict(), console_output=console_output)
 
         logger.info("YTDL-Archiver started", version="2026.2.7")
 
@@ -110,7 +110,7 @@ def archive(ctx: click.Context, playlists: Path | None, directory: Path | None) 
         if playlists:
             config.set_playlists_file(playlists)
         if directory:
-            config._config["archive"]["base_directory"] = str(directory)
+            config.set_archive_directory(directory)
 
         # Validate configuration FIRST
         config.validate()
@@ -167,14 +167,14 @@ def convert_playlists(input: Path, output: Path | None) -> None:
             output = input.with_suffix(".toml")
 
         # Load JSON playlists
-        with open(input) as f:
+        with input.open() as f:
             playlists = json.load(f)
 
         # Convert to TOML format
         toml_data = {"playlists": playlists}
 
         # Write TOML file
-        with open(output, "w") as f:
+        with output.open("w") as f:
             toml.dump(toml_data, f)
 
         click.echo(f"Converted {input} to {output}")
@@ -204,10 +204,10 @@ def init_config(output: Path | None) -> None:
     defaults_path = Path(__file__).parent / "config" / "defaults.toml"
 
     try:
-        with open(defaults_path) as f:
+        with defaults_path.open() as f:
             default_config = toml.load(f)
 
-        with open(output, "w") as f:
+        with output.open("w") as f:
             toml.dump(default_config, f)
 
         click.echo(f"Configuration file created at: {output}")

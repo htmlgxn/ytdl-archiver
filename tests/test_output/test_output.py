@@ -86,6 +86,15 @@ class TestProgressFormatter:
         assert "Test Video" in result
         assert "50%" in result
 
+    def test_video_progress_invalid_percent(self):
+        """Test video progress handles invalid percent values."""
+        formatter = ProgressFormatter(use_colors=False, show_progress=True)
+        result = formatter.video_progress(
+            "Test Video", {"percent": None, "speed": "1MB/s", "eta": "10s"}
+        )
+        assert "Test Video" in result
+        assert "0%" in result
+
     def test_video_progress_no_show(self):
         """Test video progress when show_progress is False."""
         formatter = ProgressFormatter(use_colors=False, show_progress=False)
