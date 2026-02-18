@@ -110,6 +110,9 @@ def render_playlists_template() -> str:
 #
 # How to get the id:
 # - Channel uploads playlist IDs usually start with "UU..."
+#   - You can get them by copying the channel ID from the Share options
+#     at the bottom of the channel description pop-up (on youtube dot
+#     com) and replaced the second letter with another U.
 # - Playlist URLs look like:
 #   https://www.youtube.com/playlist?list=PLAYLIST_ID
 #
