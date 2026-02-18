@@ -27,6 +27,8 @@ python scripts/stage_setup_tui_binary.py
 The staged binary is copied into `src/ytdl_archiver/setup/bin/` and bundled into wheels.
 The staging script writes a platform-tagged filename (for example,
 `ytdl-archiver-setup-tui-linux-x86_64`) and the runtime bridge picks the matching one.
+Source installs also try an auto-build fallback at setup runtime unless
+`YTDL_ARCHIVER_SETUP_TUI_AUTOBUILD=0` is set.
 
 The wizard binary requires file arguments. `cargo run` without args is expected to fail:
 ```bash

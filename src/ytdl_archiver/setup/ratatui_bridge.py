@@ -22,6 +22,9 @@ SETUP_CANCELLED_EXIT_CODE = 10
 _BINARY_ENV = "YTDL_ARCHIVER_SETUP_TUI_BIN"
 _BINARY_NAME = "ytdl-archiver-setup-tui"
 _BINARY_PACKAGE = "ytdl_archiver.setup.bin"
+_AUTOBUILD_ENV = "YTDL_ARCHIVER_SETUP_TUI_AUTOBUILD"
+_BUILD_TIMEOUT_ENV = "YTDL_ARCHIVER_SETUP_TUI_BUILD_TIMEOUT"
+_DEFAULT_BUILD_TIMEOUT_SECONDS = 300
 
 
 def _repo_root() -> Path:
@@ -38,6 +41,15 @@ def _binary_candidates() -> list[Path]:
         crate_dir / "target" / "release" / _BINARY_NAME,
         crate_dir / "target" / "debug" / _BINARY_NAME,
     ]
+
+
+def _existing_local_binaries_by_newest() -> list[Path]:
+    existing = [candidate for candidate in _binary_candidates() if candidate.exists()]
+    return sorted(
+        existing,
+        key=lambda candidate: candidate.stat().st_mtime,
+        reverse=True,
+    )
 
 
 def _packaged_binary_candidates() -> list[Traversable]:
@@ -77,6 +89,81 @@ def _ensure_executable(path: Path) -> None:
         return
 
 
+def _autobuild_enabled() -> bool:
+    value = os.environ.get(_AUTOBUILD_ENV, "1").strip().lower()
+    return value not in {"0", "false", "no", "off"}
+
+
+def _build_timeout_seconds() -> int:
+    raw = os.environ.get(_BUILD_TIMEOUT_ENV, "").strip()
+    if not raw:
+        return _DEFAULT_BUILD_TIMEOUT_SECONDS
+    try:
+        timeout = int(raw)
+    except ValueError:
+        return _DEFAULT_BUILD_TIMEOUT_SECONDS
+    if timeout <= 0:
+        return _DEFAULT_BUILD_TIMEOUT_SECONDS
+    return timeout
+
+
+def _attempt_autobuild_binary(timeout_seconds: int) -> None:
+    manifest = _manifest_path()
+    repo_root = _repo_root()
+    stage_script = repo_root / "scripts" / "stage_setup_tui_binary.py"
+    if not stage_script.exists():
+        raise FileNotFoundError(f"Setup staging script is missing: {stage_script}")
+
+    build_command = [
+        "cargo",
+        "build",
+        "--manifest-path",
+        str(manifest),
+        "--release",
+    ]
+    stage_command = [sys.executable, str(stage_script)]
+
+    try:
+        build_result = subprocess.run(
+            build_command,
+            check=False,
+            timeout=timeout_seconds,
+            cwd=str(repo_root),
+        )
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(
+            "Rust toolchain (cargo) is required to auto-build the setup wizard."
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise FileNotFoundError(
+            f"Auto-build timed out after {timeout_seconds}s while running cargo."
+        ) from exc
+
+    if build_result.returncode != 0:
+        raise FileNotFoundError(
+            "Auto-build failed while compiling setup wizard "
+            f"(cargo exit={build_result.returncode})."
+        )
+
+    try:
+        stage_result = subprocess.run(
+            stage_command,
+            check=False,
+            timeout=timeout_seconds,
+            cwd=str(repo_root),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise FileNotFoundError(
+            f"Auto-build timed out after {timeout_seconds}s while staging binary."
+        ) from exc
+
+    if stage_result.returncode != 0:
+        raise FileNotFoundError(
+            "Auto-build failed while staging setup wizard binary "
+            f"(stage exit={stage_result.returncode})."
+        )
+
+
 def _resolve_ratatui_binary(stack: ExitStack) -> Path:
     override = os.environ.get(_BINARY_ENV, "").strip()
     if override:
@@ -94,14 +181,29 @@ def _resolve_ratatui_binary(stack: ExitStack) -> Path:
             _ensure_executable(packaged_path)
             return packaged_path
 
-    for candidate in _binary_candidates():
-        if candidate.exists():
+    for candidate in _existing_local_binaries_by_newest():
+        _ensure_executable(candidate)
+        return candidate
+
+    if _autobuild_enabled():
+        timeout_seconds = _build_timeout_seconds()
+        _attempt_autobuild_binary(timeout_seconds)
+        for candidate in _packaged_binary_candidates():
+            if candidate.is_file():
+                packaged_path = stack.enter_context(resources.as_file(candidate))
+                _ensure_executable(packaged_path)
+                return packaged_path
+        for candidate in _existing_local_binaries_by_newest():
             _ensure_executable(candidate)
             return candidate
+        raise FileNotFoundError(
+            "Setup wizard auto-build completed, but no runnable binary was found."
+        )
 
     raise FileNotFoundError(
-        "Rust setup wizard binary not found. Install a wheel that bundles the setup "
-        "binary, or build it locally with "
+        "Rust setup wizard binary not found. Auto-build is disabled "
+        f"({_AUTOBUILD_ENV}=0). Install a wheel that bundles the setup binary, or "
+        "build/stage it locally with "
         "'cargo build --manifest-path rust/setup_tui/Cargo.toml --release' and stage it "
         "with 'python scripts/stage_setup_tui_binary.py', or set "
         f"{_BINARY_ENV}."

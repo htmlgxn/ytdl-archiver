@@ -8,6 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 
+import ytdl_archiver.setup.ratatui_bridge as bridge
 from ytdl_archiver.setup.models import SetupAnswers
 from ytdl_archiver.setup.ratatui_bridge import run_ratatui_setup
 
@@ -130,16 +131,17 @@ def test_run_ratatui_setup_missing_env_binary(monkeypatch):
         run_ratatui_setup(SetupAnswers())
 
 
-def test_run_ratatui_setup_uses_cargo_fallback(monkeypatch):
-    """Bridge fails with clear guidance when no binary source is available."""
+def test_run_ratatui_setup_fails_when_autobuild_disabled(monkeypatch):
+    """Bridge fails with guidance when autobuild and all binary sources are absent."""
     monkeypatch.delenv("YTDL_ARCHIVER_SETUP_TUI_BIN", raising=False)
+    monkeypatch.setenv("YTDL_ARCHIVER_SETUP_TUI_AUTOBUILD", "0")
     monkeypatch.setattr(
         "ytdl_archiver.setup.ratatui_bridge._packaged_binary_candidates",
         lambda: [],
     )
     monkeypatch.setattr("ytdl_archiver.setup.ratatui_bridge._binary_candidates", lambda: [])
 
-    with pytest.raises(FileNotFoundError, match=r"stage_setup_tui_binary\.py"):
+    with pytest.raises(FileNotFoundError, match=r"AUTOBUILD=0"):
         run_ratatui_setup(SetupAnswers())
 
 
@@ -210,6 +212,100 @@ def test_run_ratatui_setup_uses_packaged_binary_candidate(monkeypatch, temp_dir)
 
     command = fake_run.call_args.args[0]
     assert command[0] == str(fake_bin)
+
+
+def test_run_ratatui_setup_attempts_autobuild_when_no_binary(monkeypatch, temp_dir):
+    """Bridge tries autobuild path and then runs the newly-available binary."""
+    fake_bin = temp_dir / "built-setup-ui"
+    monkeypatch.delenv("YTDL_ARCHIVER_SETUP_TUI_BIN", raising=False)
+    monkeypatch.setenv("YTDL_ARCHIVER_SETUP_TUI_AUTOBUILD", "1")
+    monkeypatch.setattr(
+        "ytdl_archiver.setup.ratatui_bridge._packaged_binary_candidates",
+        lambda: [],
+    )
+    monkeypatch.setattr(
+        "ytdl_archiver.setup.ratatui_bridge._binary_candidates",
+        lambda: [fake_bin],
+    )
+    monkeypatch.setattr(
+        "ytdl_archiver.setup.ratatui_bridge._attempt_autobuild_binary",
+        lambda _timeout: fake_bin.write_text(""),
+    )
+    payload = {
+        "archive_directory": "/tmp/media",
+        "cookie_source": "browser",
+        "cookie_browser": "firefox",
+        "cookie_profile": "",
+        "write_subtitles": True,
+        "write_thumbnail": True,
+        "generate_nfo": True,
+    }
+    fake_run = Mock(
+        return_value=subprocess.CompletedProcess(args=[str(fake_bin)], returncode=0)
+    )
+    monkeypatch.setattr("ytdl_archiver.setup.ratatui_bridge.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "ytdl_archiver.setup.ratatui_bridge.tempfile.TemporaryDirectory",
+        _FakeTempDir.from_payload(temp_dir, payload),
+    )
+
+    run_ratatui_setup(SetupAnswers())
+
+    command = fake_run.call_args.args[0]
+    assert command[0] == str(fake_bin)
+
+
+def test_attempt_autobuild_binary_reports_missing_cargo(monkeypatch):
+    """Autobuild reports missing cargo with a clear actionable message."""
+    monkeypatch.setattr(
+        bridge.subprocess,
+        "run",
+        Mock(side_effect=FileNotFoundError("cargo not found")),
+    )
+    with pytest.raises(FileNotFoundError, match="cargo"):
+        bridge._attempt_autobuild_binary(300)
+
+
+def test_attempt_autobuild_binary_reports_compile_failure(monkeypatch):
+    """Autobuild surfaces compile command failure details."""
+    monkeypatch.setattr(
+        bridge.subprocess,
+        "run",
+        Mock(
+            side_effect=[
+                subprocess.CompletedProcess(args=["cargo"], returncode=2),
+            ]
+        ),
+    )
+    with pytest.raises(FileNotFoundError, match="cargo exit=2"):
+        bridge._attempt_autobuild_binary(300)
+
+
+def test_attempt_autobuild_binary_reports_stage_failure(monkeypatch):
+    """Autobuild surfaces staging script failure details."""
+    monkeypatch.setattr(
+        bridge.subprocess,
+        "run",
+        Mock(
+            side_effect=[
+                subprocess.CompletedProcess(args=["cargo"], returncode=0),
+                subprocess.CompletedProcess(args=["python"], returncode=3),
+            ]
+        ),
+    )
+    with pytest.raises(FileNotFoundError, match="stage exit=3"):
+        bridge._attempt_autobuild_binary(300)
+
+
+def test_attempt_autobuild_binary_reports_timeout(monkeypatch):
+    """Autobuild reports command timeout clearly."""
+    monkeypatch.setattr(
+        bridge.subprocess,
+        "run",
+        Mock(side_effect=subprocess.TimeoutExpired(cmd=["cargo"], timeout=300)),
+    )
+    with pytest.raises(FileNotFoundError, match="timed out"):
+        bridge._attempt_autobuild_binary(300)
 
 
 def test_run_ratatui_setup_missing_result_file(monkeypatch, temp_dir):
