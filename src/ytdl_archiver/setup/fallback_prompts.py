@@ -1,4 +1,4 @@
-"""Non-Textual setup collection helpers."""
+"""Prompt-based setup collection helpers."""
 
 import sys
 

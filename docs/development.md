@@ -21,7 +21,12 @@ uv run ty check .
 Build the setup wizard binary:
 ```bash
 cargo build --manifest-path rust/setup_tui/Cargo.toml --release
+python scripts/stage_setup_tui_binary.py
 ```
+
+The staged binary is copied into `src/ytdl_archiver/setup/bin/` and bundled into wheels.
+The staging script writes a platform-tagged filename (for example,
+`ytdl-archiver-setup-tui-linux-x86_64`) and the runtime bridge picks the matching one.
 
 The wizard binary requires file arguments. `cargo run` without args is expected to fail:
 ```bash
@@ -49,7 +54,6 @@ src/ytdl_archiver/
 │   ├── templates.py
 │   ├── writer.py
 │   ├── fallback_prompts.py
-│   ├── textual_app.py
 │   └── runner.py
 └── core/
     ├── archive.py

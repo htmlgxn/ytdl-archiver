@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import subprocess
+import sys
 import tempfile
+from contextlib import ExitStack
 from dataclasses import asdict
+from importlib import resources
+from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +21,7 @@ from .models import CookieSource, SetupAnswers
 SETUP_CANCELLED_EXIT_CODE = 10
 _BINARY_ENV = "YTDL_ARCHIVER_SETUP_TUI_BIN"
 _BINARY_NAME = "ytdl-archiver-setup-tui"
+_BINARY_PACKAGE = "ytdl_archiver.setup.bin"
 
 
 def _repo_root() -> Path:
@@ -34,7 +40,44 @@ def _binary_candidates() -> list[Path]:
     ]
 
 
-def _resolve_ratatui_binary() -> Path:
+def _packaged_binary_candidates() -> list[Traversable]:
+    package_files = resources.files(_BINARY_PACKAGE)
+    os_name = (
+        "windows"
+        if sys.platform.startswith("win")
+        else "macos" if sys.platform == "darwin" else "linux"
+    )
+    machine = platform.machine().lower()
+    arch = {
+        "x86_64": "x86_64",
+        "amd64": "x86_64",
+        "aarch64": "aarch64",
+        "arm64": "aarch64",
+    }.get(machine, machine)
+    platform_tag = f"{os_name}-{arch}"
+    names = [
+        f"{_BINARY_NAME}-{platform_tag}",
+        f"{_BINARY_NAME}-{platform_tag}.exe",
+    ]
+    if sys.platform.startswith("win"):
+        names.extend([f"{_BINARY_NAME}.exe", _BINARY_NAME])
+    else:
+        names.extend([_BINARY_NAME, f"{_BINARY_NAME}.exe"])
+    return [package_files.joinpath(name) for name in names]
+
+
+def _ensure_executable(path: Path) -> None:
+    if sys.platform.startswith("win"):
+        return
+    try:
+        mode = path.stat().st_mode
+        path.chmod(mode | 0o111)
+    except OSError:
+        # Best-effort only; if this fails, subprocess will report exec error.
+        return
+
+
+def _resolve_ratatui_binary(stack: ExitStack) -> Path:
     override = os.environ.get(_BINARY_ENV, "").strip()
     if override:
         override_path = Path(override).expanduser()
@@ -42,16 +85,26 @@ def _resolve_ratatui_binary() -> Path:
             raise FileNotFoundError(
                 f"{_BINARY_ENV} points to missing binary: {override_path}"
             )
+        _ensure_executable(override_path)
         return override_path
+
+    for candidate in _packaged_binary_candidates():
+        if candidate.is_file():
+            packaged_path = stack.enter_context(resources.as_file(candidate))
+            _ensure_executable(packaged_path)
+            return packaged_path
 
     for candidate in _binary_candidates():
         if candidate.exists():
+            _ensure_executable(candidate)
             return candidate
 
     raise FileNotFoundError(
-        "Rust setup wizard binary not found. Build it with "
-        "'cargo build --manifest-path rust/setup_tui/Cargo.toml --release' or "
-        f"set {_BINARY_ENV}."
+        "Rust setup wizard binary not found. Install a wheel that bundles the setup "
+        "binary, or build it locally with "
+        "'cargo build --manifest-path rust/setup_tui/Cargo.toml --release' and stage it "
+        "with 'python scripts/stage_setup_tui_binary.py', or set "
+        f"{_BINARY_ENV}."
     )
 
 
@@ -93,39 +146,40 @@ def _normalized_answers(payload: dict[str, Any], defaults: SetupAnswers) -> Setu
 def run_ratatui_setup(defaults: SetupAnswers | None = None) -> SetupAnswers | None:
     """Run the Rust ratatui setup and return answers, or None if cancelled."""
     selected_defaults = defaults or SetupAnswers()
-    binary = _resolve_ratatui_binary()
-    with tempfile.TemporaryDirectory(prefix="ytdl-archiver-setup-") as tmpdir:
-        defaults_path = Path(tmpdir) / "defaults.json"
-        result_path = Path(tmpdir) / "result.json"
-        defaults_path.write_text(json.dumps(asdict(selected_defaults)))
+    with ExitStack() as stack:
+        binary = _resolve_ratatui_binary(stack)
+        with tempfile.TemporaryDirectory(prefix="ytdl-archiver-setup-") as tmpdir:
+            defaults_path = Path(tmpdir) / "defaults.json"
+            result_path = Path(tmpdir) / "result.json"
+            defaults_path.write_text(json.dumps(asdict(selected_defaults)))
 
-        command = [
-            str(binary),
-            "--defaults",
-            str(defaults_path),
-            "--result",
-            str(result_path),
-        ]
-        completed = subprocess.run(command, check=False)
+            command = [
+                str(binary),
+                "--defaults",
+                str(defaults_path),
+                "--result",
+                str(result_path),
+            ]
+            completed = subprocess.run(command, check=False)
 
-        if completed.returncode == SETUP_CANCELLED_EXIT_CODE:
-            return None
-        if completed.returncode != 0:
-            raise RuntimeError(
-                f"Ratatui setup failed (exit={completed.returncode})"
-            )
+            if completed.returncode == SETUP_CANCELLED_EXIT_CODE:
+                return None
+            if completed.returncode != 0:
+                raise RuntimeError(
+                    f"Ratatui setup failed (exit={completed.returncode})"
+                )
 
-        if not result_path.exists():
-            raise ValueError("Ratatui setup did not produce a result file")
+            if not result_path.exists():
+                raise ValueError("Ratatui setup did not produce a result file")
 
-        raw_output = result_path.read_text().strip()
-        if not raw_output:
-            raise ValueError("Ratatui setup returned no output")
+            raw_output = result_path.read_text().strip()
+            if not raw_output:
+                raise ValueError("Ratatui setup returned no output")
 
-        try:
-            parsed = json.loads(raw_output)
-        except json.JSONDecodeError as exc:  # pragma: no cover - defensive parse guard
-            raise ValueError(f"Ratatui setup produced invalid JSON: {exc}") from exc
-        if not isinstance(parsed, dict):
-            raise TypeError("Ratatui setup output must be a JSON object")
-        return _normalized_answers(parsed, selected_defaults)
+            try:
+                parsed = json.loads(raw_output)
+            except json.JSONDecodeError as exc:  # pragma: no cover - defensive parse guard
+                raise ValueError(f"Ratatui setup produced invalid JSON: {exc}") from exc
+            if not isinstance(parsed, dict):
+                raise TypeError("Ratatui setup output must be a JSON object")
+            return _normalized_answers(parsed, selected_defaults)

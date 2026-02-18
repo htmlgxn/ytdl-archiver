@@ -6,6 +6,9 @@ build/
 *.egg-info/
 .venv/
 
+# Agents
+.agents/
+
 # Coverage reports
 .coverage
 htmlcov/
@@ -33,6 +36,11 @@ Thumbs.db
 # Development tools
 dev-tools/
 dev-files/
+
+# Rust
+target/
+rust/setup_tui/target/
+src/ytdl_archiver/setup/bin/ytdl-archiver-setup-tui*
 
 # Personal
 .tmp/
