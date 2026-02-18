@@ -75,7 +75,17 @@ class TestProgressFormatter:
         formatter = ProgressFormatter(use_colors=False)
         result = formatter.playlist_start("Test Playlist", 10)
         assert "Test Playlist" in result
-        assert "10" in result
+        assert "(10 videos)" in result
+
+    def test_playlist_start_without_videos_suffix(self):
+        """Test playlist start output without videos suffix."""
+        formatter = ProgressFormatter(use_colors=False)
+        result = formatter.playlist_start(
+            "all playlists", 5, include_videos_label=False
+        )
+        assert "all playlists" in result
+        assert "(5)" in result
+        assert "videos" not in result
 
     def test_video_progress(self):
         """Test video progress output."""
@@ -106,16 +116,17 @@ class TestProgressFormatter:
     def test_video_complete(self):
         """Test video complete output."""
         formatter = ProgressFormatter(use_colors=False)
-        result = formatter.video_complete("Test Video", "1080p", "100MB")
+        result = formatter.video_complete("Test Video", "1080p", ".mp4", "100mb")
         assert "Test Video" in result
-        assert "1080p" in result
-        assert "100MB" in result
+        assert "[1080p, .mp4, 100mb]" in result
 
-    def test_file_generated(self):
-        """Test file generated output."""
+    def test_artifact_complete(self):
+        """Test artifact completion output."""
         formatter = ProgressFormatter(use_colors=False)
-        result = formatter.file_generated("NFO file")
-        assert "NFO file" in result
+        result = formatter.artifact_complete("Test Video", ".srt")
+        assert "Downloaded:" in result
+        assert "Test Video" in result
+        assert "[.srt]" in result
 
     def test_warning(self):
         """Test warning output."""

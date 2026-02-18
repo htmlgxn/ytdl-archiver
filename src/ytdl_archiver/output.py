@@ -31,6 +31,7 @@ class Colors:
         BLUE = colorama.Fore.BLUE
         YELLOW = colorama.Fore.YELLOW
         RED = colorama.Fore.RED
+        GRAY = colorama.Fore.LIGHTBLACK_EX
         PURPLE = colorama.Fore.MAGENTA
         ORANGE = colorama.Fore.LIGHTYELLOW_EX
         TEAL = colorama.Fore.CYAN
@@ -38,7 +39,7 @@ class Colors:
         RESET = colorama.Fore.RESET
         BOLD = colorama.Style.BRIGHT
     else:
-        GREEN = BLUE = YELLOW = RED = PURPLE = ORANGE = TEAL = INFO = RESET = BOLD = ""
+        GREEN = BLUE = YELLOW = RED = GRAY = PURPLE = ORANGE = TEAL = INFO = RESET = BOLD = ""
 
 
 class Symbols:
@@ -82,26 +83,60 @@ class BaseFormatter:
 
     def header(self, version: str) -> str:
         """Print application header."""
-        header = self._colorize(f"ytdl-archiver v{version}", Colors.PURPLE)
+        app_name = self._colorize("ytdl-archiver", Colors.RED)
+        app_version = self._colorize(f"v{version}", Colors.GRAY)
+        header = f"{app_name} {app_version}"
         return f"\n{Symbols.HEADER} {header}\n"
 
-    def playlist_start(self, name: str, video_count: int) -> str:
+    def playlist_start(
+        self, name: str, video_count: int, include_videos_label: bool = True
+    ) -> str:
         """Print playlist processing start."""
+        count_display = (
+            f"{video_count} videos" if include_videos_label else f"{video_count}"
+        )
         playlist = self._colorize(
-            f"Processing: {name} ({video_count} videos)", Colors.ORANGE
+            f"Processing: {name} ({count_display})", Colors.ORANGE
         )
         return f"{Symbols.PLAYLIST} {playlist}"
 
-    def video_complete(self, title: str, resolution: str = "", size: str = "") -> str:
+    @staticmethod
+    def _normalize_extension(extension: str) -> str:
+        """Normalize extension to .ext format."""
+        ext = extension.strip().lower()
+        if not ext:
+            return ""
+        if not ext.startswith("."):
+            return f".{ext}"
+        return ext
+
+    def video_complete(
+        self, title: str, resolution: str = "", extension: str = "", size: str = ""
+    ) -> str:
         """Print video completion message."""
         complete = self._colorize("Downloaded:", Colors.GREEN)
         parts = [complete, title]
 
+        ext = self._normalize_extension(extension)
+        bracket_bits = []
         if resolution:
-            parts.append(f"[{resolution}]")
+            bracket_bits.append(resolution)
+        if ext:
+            bracket_bits.append(ext)
         if size:
-            parts.append(f"{size}")
+            bracket_bits.append(size)
+        if bracket_bits:
+            parts.append(f"[{', '.join(bracket_bits)}]")
 
+        return f"{Symbols.SUCCESS} {' '.join(parts)}"
+
+    def artifact_complete(self, title: str, extension: str = "") -> str:
+        """Print sidecar artifact completion message."""
+        complete = self._colorize("Downloaded:", Colors.GREEN)
+        parts = [complete, title]
+        ext = self._normalize_extension(extension)
+        if ext:
+            parts.append(f"[{ext}]")
         return f"{Symbols.SUCCESS} {' '.join(parts)}"
 
     def file_generated(self, file_type: str) -> str:
@@ -165,7 +200,7 @@ class ProgressFormatter(BaseFormatter):
         percent_str = str(progress_data.get("percent") or "0%")
         try:
             percent = float(percent_str.replace("%", ""))
-        except ValueError, AttributeError:
+        except (ValueError, AttributeError):
             percent = 0
 
         speed = progress_data.get("speed", "").strip()
@@ -213,6 +248,7 @@ class ProgressFormatter(BaseFormatter):
             unit="%",
             position=0,
             leave=False,
+            file=sys.stdout,
         )
 
     def update_video_progress(self, progress_data: dict[str, Any]) -> None:
@@ -223,7 +259,7 @@ class ProgressFormatter(BaseFormatter):
         percent_str = str(progress_data.get("percent") or "0%")
         try:
             percent = float(percent_str.replace("%", ""))
-        except ValueError, AttributeError:
+        except (ValueError, AttributeError):
             percent = 0
 
         self._current_progress_bar.n = percent
@@ -272,9 +308,11 @@ class QuietFormatter(BaseFormatter):
         _ = version
         return ""
 
-    def playlist_start(self, name: str, video_count: int) -> str:
+    def playlist_start(
+        self, name: str, video_count: int, include_videos_label: bool = True
+    ) -> str:
         """Print playlist processing start (quiet mode - minimal)."""
-        _ = (name, video_count)
+        _ = (name, video_count, include_videos_label)
         return ""
 
     def start_video_progress(self, title: str) -> None:
@@ -288,9 +326,16 @@ class QuietFormatter(BaseFormatter):
     def close_video_progress(self) -> None:
         """Close video progress (quiet mode - no-op)."""
 
-    def video_complete(self, title: str, resolution: str = "", size: str = "") -> str:
+    def video_complete(
+        self, title: str, resolution: str = "", extension: str = "", size: str = ""
+    ) -> str:
         """Print video completion (quiet mode - minimal)."""
-        _ = (title, resolution, size)
+        _ = (title, resolution, extension, size)
+        return ""
+
+    def artifact_complete(self, title: str, extension: str = "") -> str:
+        """Print artifact completion (quiet mode - minimal)."""
+        _ = (title, extension)
         return ""
 
     def file_generated(self, file_type: str) -> str:
@@ -383,13 +428,19 @@ def emit_formatter_message(formatter: Any, level: str, message: str) -> None:
     """Render and print a formatter message if available."""
     rendered = render_formatter_message(formatter, level, message)
     if rendered:
-        print(rendered)
+        if tqdm is not None:
+            tqdm.write(rendered)
+        else:
+            print(rendered)
 
 
 def emit_rendered(message: str) -> None:
     """Print a pre-rendered message when non-empty."""
     if message:
-        print(message)
+        if tqdm is not None:
+            tqdm.write(message)
+        else:
+            print(message)
 
 
 def get_formatter(

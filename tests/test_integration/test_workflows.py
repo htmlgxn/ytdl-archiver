@@ -175,6 +175,7 @@ format = "text"
             "download_video_with_config",
             return_value=sample_playlist_data["entries"][0],
         )
+        mocker.patch.object(config, "get_playlist_config", return_value={})
 
         # Process the playlist
         archiver.process_playlist("test_playlist", "TestPlaylist")
