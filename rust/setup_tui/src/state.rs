@@ -244,10 +244,10 @@ impl WizardState {
             }
             Step::DownloadDefaults => {
                 match key.code {
-                    KeyCode::Char('j') | KeyCode::Down => {
+                    KeyCode::Char('j') | KeyCode::Down | KeyCode::Right => {
                         self.defaults_index = (self.defaults_index + 1).min(2);
                     }
-                    KeyCode::Char('k') | KeyCode::Up => {
+                    KeyCode::Char('k') | KeyCode::Up | KeyCode::Left => {
                         self.defaults_index = self.defaults_index.saturating_sub(1);
                     }
                     KeyCode::Char(' ') => self.toggle_default(),
@@ -466,5 +466,23 @@ mod tests {
         state.handle_key(key(KeyCode::Backspace));
         assert_eq!(state.step(), Step::ArchiveDirectory);
         assert_eq!(state.archive_input().len(), initial.saturating_sub(1));
+    }
+
+    #[test]
+    fn defaults_support_left_right_navigation() {
+        let mut state = WizardState::new(SetupAnswers {
+            cookie_source: "manual_file".to_string(),
+            ..SetupAnswers::default()
+        });
+        state.handle_key(key(KeyCode::Enter));
+        state.handle_key(key(KeyCode::Enter));
+        assert_eq!(state.step(), Step::DownloadDefaults);
+        assert_eq!(state.defaults_index(), 0);
+
+        state.handle_key(key(KeyCode::Right));
+        assert_eq!(state.defaults_index(), 1);
+
+        state.handle_key(key(KeyCode::Left));
+        assert_eq!(state.defaults_index(), 0);
     }
 }

@@ -45,7 +45,9 @@ Keyboard controls:
 - `Esc` / `q`: cancel
 
 Published wheels include prebuilt setup wizard binaries, so `init` works out of the box.
-If the setup binary is unavailable, setup falls back to prompt-based questions.
+For source installs:
+- With Rust toolchain available, setup auto-builds and stages the ratatui binary on first run.
+- Without Rust toolchain, setup falls back to prompt-based questions.
 If setup runs in a non-interactive environment (stdin/stdout not TTY), it uses defaults and reports that in the summary.
 
 You can also run setup explicitly:
@@ -162,6 +164,16 @@ uv run ytdl-archiver -c /path/to/config.toml init
 Override setup binary path (optional):
 ```bash
 YTDL_ARCHIVER_SETUP_TUI_BIN=/path/to/ytdl-archiver-setup-tui uv run ytdl-archiver init
+```
+
+Disable setup auto-build fallback (optional):
+```bash
+YTDL_ARCHIVER_SETUP_TUI_AUTOBUILD=0 uv run ytdl-archiver init
+```
+
+Adjust setup auto-build timeout in seconds (optional, default `300`):
+```bash
+YTDL_ARCHIVER_SETUP_TUI_BUILD_TIMEOUT=600 uv run ytdl-archiver init
 ```
 
 ## Configuration Reference
