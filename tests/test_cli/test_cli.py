@@ -1,7 +1,7 @@
 """Tests for CLI interface."""
 
-from unittest.mock import Mock, patch
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 from click.testing import CliRunner
 
@@ -52,6 +52,93 @@ class TestCLI:
             # Check that the command ran (either succeeded or showed expected error)
             assert "ytdl-archiver" in result.output.lower() or result.exit_code != 0
 
+    @patch("ytdl_archiver.cli.BrowserCookieRefresher")
+    @patch("ytdl_archiver.cli.PlaylistArchiver")
+    @patch("ytdl_archiver.cli.Config")
+    def test_archive_refreshes_browser_cookies_before_run(
+        self,
+        mock_config_class,
+        mock_archiver,
+        mock_cookie_refresher_class,
+    ):
+        """Test archive refreshes cookies before running when browser flag is set."""
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text("")
+
+            mock_config = Mock()
+            mock_config.validate.return_value = None
+            mock_config.ensure_playlists_file.return_value = None
+            mock_config.as_dict.return_value = {"logging": {"level": "INFO"}}
+            mock_config.get_cookie_file_target_path.return_value = (
+                Path(temp_dir) / "cookies.txt"
+            )
+            mock_config_class.return_value = mock_config
+
+            mock_archiver_instance = Mock()
+            mock_archiver.return_value = mock_archiver_instance
+            cookie_refresher = Mock()
+            mock_cookie_refresher_class.return_value = cookie_refresher
+
+            result = self.runner.invoke(
+                cli,
+                [
+                    "--config",
+                    str(config_file),
+                    "archive",
+                    "--cookies-browser",
+                    "firefox",
+                    "--cookies-profile",
+                    "default",
+                ],
+            )
+
+            assert result.exit_code == 0
+            cookie_refresher.refresh_to_file.assert_called_once_with(
+                "firefox",
+                "default",
+                Path(temp_dir) / "cookies.txt",
+            )
+            mock_archiver.assert_called_once()
+            assert mock_archiver.call_args.kwargs["skip_initial_cookie_refresh"] is True
+
+    @patch("ytdl_archiver.cli.BrowserCookieRefresher")
+    @patch("ytdl_archiver.cli.Config")
+    def test_archive_cookie_refresh_failure_exits(
+        self, mock_config_class, mock_refresher
+    ):
+        """Test archive fails fast when startup cookie refresh fails."""
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text("")
+
+            mock_config = Mock()
+            mock_config.validate.return_value = None
+            mock_config.ensure_playlists_file.return_value = None
+            mock_config.as_dict.return_value = {"logging": {"level": "INFO"}}
+            mock_config.get_cookie_file_target_path.return_value = (
+                Path(temp_dir) / "cookies.txt"
+            )
+            mock_config_class.return_value = mock_config
+
+            mock_refresher.return_value.refresh_to_file.side_effect = RuntimeError(
+                "cannot extract"
+            )
+
+            result = self.runner.invoke(
+                cli,
+                [
+                    "--config",
+                    str(config_file),
+                    "archive",
+                    "--cookies-browser",
+                    "firefox",
+                ],
+            )
+
+            assert result.exit_code != 0
+            assert "Cookie refresh failed at startup" in result.output
+
     def test_archive_failure_before_formatter_initialization(self):
         """Test archive failure path doesn't crash when formatter is not initialized yet."""
         with CliRunner().isolated_filesystem() as temp_dir:
@@ -63,9 +150,7 @@ base_directory = "/this/path/should/not/exist"
 """
             )
 
-            result = self.runner.invoke(
-                cli, ["--config", str(config_file), "archive"]
-            )
+            result = self.runner.invoke(cli, ["--config", str(config_file), "archive"])
 
             assert result.exit_code != 0
             assert "Archive failed" in result.output

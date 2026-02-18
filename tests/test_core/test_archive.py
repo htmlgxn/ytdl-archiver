@@ -1,5 +1,6 @@
 """Tests for archive tracking functionality."""
 
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -203,3 +204,78 @@ class TestPlaylistArchiver:
         ):
             # Should not raise exception
             archiver.process_playlist("test", "TestPlaylist")
+
+    def test_run_refreshes_cookies_before_start_and_each_playlist(
+        self, config, temp_dir, mocker
+    ):
+        """Test cookie refresh runs at startup and per playlist."""
+        config._config["archive"]["delay_between_playlists"] = 0
+        playlists_file = temp_dir / "dummy.toml"
+        playlists_file.write_text("")
+        mocker.patch.object(config, "get_playlists_file", return_value=playlists_file)
+        mocker.patch.object(
+            config,
+            "load_playlists",
+            return_value=[
+                {"id": "a", "path": "one"},
+                {"id": "b", "path": "two"},
+            ],
+        )
+        mocker.patch.object(
+            config,
+            "get_cookie_file_target_path",
+            return_value=Path("/tmp/test-cookies.txt"),
+        )
+
+        cookie_refresher = Mock()
+        archiver = PlaylistArchiver(
+            config,
+            cookie_refresher=cookie_refresher,
+            cookie_browser="firefox",
+        )
+        process_playlist = mocker.patch.object(archiver, "process_playlist")
+
+        archiver.run()
+
+        assert cookie_refresher.refresh_to_file.call_count == 3
+        assert process_playlist.call_count == 2
+
+    def test_run_cookie_refresh_failure_aborts_remaining_playlists(
+        self, config, temp_dir, mocker
+    ):
+        """Test failure before a playlist aborts processing."""
+        config._config["archive"]["delay_between_playlists"] = 0
+        playlists_file = temp_dir / "dummy.toml"
+        playlists_file.write_text("")
+        mocker.patch.object(config, "get_playlists_file", return_value=playlists_file)
+        mocker.patch.object(
+            config,
+            "load_playlists",
+            return_value=[
+                {"id": "a", "path": "one"},
+                {"id": "b", "path": "two"},
+            ],
+        )
+        mocker.patch.object(
+            config,
+            "get_cookie_file_target_path",
+            return_value=Path("/tmp/test-cookies.txt"),
+        )
+
+        cookie_refresher = Mock()
+        cookie_refresher.refresh_to_file.side_effect = [
+            None,
+            None,
+            RuntimeError("boom"),
+        ]
+        archiver = PlaylistArchiver(
+            config,
+            cookie_refresher=cookie_refresher,
+            cookie_browser="firefox",
+        )
+        process_playlist = mocker.patch.object(archiver, "process_playlist")
+
+        with pytest.raises(ArchiveError, match="Cookie refresh failed"):
+            archiver.run()
+
+        assert process_playlist.call_count == 1

@@ -29,3 +29,9 @@ class ArchiveError(YTDLArchiverError):
     """Archive tracking errors."""
 
     pass
+
+
+class CookieRefreshError(YTDLArchiverError):
+    """Browser cookie refresh errors."""
+
+    pass

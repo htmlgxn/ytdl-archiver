@@ -72,6 +72,19 @@ class TestConfig:
         # Test with default value
         assert config.get("nonexistent.key", "default") == "default"
 
+    def test_get_cookie_file_target_path_returns_path_when_missing(
+        self, sample_config_file
+    ):
+        """Test cookie target path is returned even if file does not exist."""
+        config = Config(sample_config_file)
+        config._config.setdefault("http", {})["cookie_file"] = "~/missing-cookies.txt"
+
+        target_path = config.get_cookie_file_target_path()
+
+        assert str(target_path).endswith("missing-cookies.txt")
+        assert target_path.is_absolute()
+        assert config.get_cookie_file_path() is None
+
     def test_invalid_toml_file(self, temp_config_dir):
         """Test handling of invalid TOML files."""
         # Create invalid TOML file
@@ -139,7 +152,9 @@ class TestConfig:
 
         # Config-dir playlists should be ignored when override is set.
         config_dir_playlists = temp_config_dir / "playlists.toml"
-        config_dir_playlists.write_text('[[playlists]]\nid = "config_dir"\npath = "A"\n')
+        config_dir_playlists.write_text(
+            '[[playlists]]\nid = "config_dir"\npath = "A"\n'
+        )
 
         override_playlists = temp_dir / "override-playlists.toml"
         override_playlists.write_text('[[playlists]]\nid = "override"\npath = "B"\n')

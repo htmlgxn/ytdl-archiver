@@ -110,6 +110,11 @@ class Config:
         path = Path(cookie_path).expanduser()
         return path if path.exists() else None
 
+    def get_cookie_file_target_path(self) -> Path:
+        """Get configured cookie file target path even if it does not exist."""
+        cookie_path = self.get("http.cookie_file", "~/cookies.txt")
+        return Path(str(cookie_path)).expanduser()
+
     def get_playlists_file(self) -> Path:
         """Get the playlists file path in the config directory."""
         override = self.get("playlists_file")
