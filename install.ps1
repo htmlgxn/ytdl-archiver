@@ -34,21 +34,56 @@ function Ask-YesNo {
 
 function Install-Firefox {
     if (Get-Command firefox -ErrorAction SilentlyContinue) {
-        Write-Host "Firefox already installed."
+        Write-Host "Good! Firefox is already installed!"
         return
     }
 
     if (Get-Command winget -ErrorAction SilentlyContinue) {
-        winget install --id Mozilla.Firefox --exact --accept-source-agreements --accept-package-agreements
+        try {
+            winget install --id Mozilla.Firefox --exact --accept-source-agreements --accept-package-agreements
+        } catch {
+            Write-Host "Warning: Firefox install failed. Install manually from https://www.mozilla.org/firefox/."
+        }
         return
     }
 
     if (Get-Command choco -ErrorAction SilentlyContinue) {
-        choco install firefox -y
+        try {
+            choco install firefox -y
+        } catch {
+            Write-Host "Warning: Firefox install failed. Install manually from https://www.mozilla.org/firefox/."
+        }
         return
     }
 
     Write-Host "No supported package manager found. Install Firefox manually from https://www.mozilla.org/firefox/."
+}
+
+function Install-FFmpeg {
+    if (Get-Command ffmpeg -ErrorAction SilentlyContinue) {
+        Write-Host "Good! FFmpeg is already installed!"
+        return
+    }
+
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        try {
+            winget install --id Gyan.FFmpeg --exact --accept-source-agreements --accept-package-agreements
+        } catch {
+            Write-Host "Warning: FFmpeg install failed. Install manually from https://ffmpeg.org/download.html."
+        }
+        return
+    }
+
+    if (Get-Command choco -ErrorAction SilentlyContinue) {
+        try {
+            choco install ffmpeg -y
+        } catch {
+            Write-Host "Warning: FFmpeg install failed. Install manually from https://ffmpeg.org/download.html."
+        }
+        return
+    }
+
+    Write-Host "No supported package manager found. Install FFmpeg manually from https://ffmpeg.org/download.html."
 }
 
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
@@ -60,8 +95,8 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     }
 }
 
-if (-not (Get-Command deno -ErrorAction SilentlyContinue)) {
-    if (Ask-YesNo "Install Deno? (recommended for best yt-dlp compatibility)" $true) {
+if (Ask-YesNo "Install Deno? (recommended for best yt-dlp compatibility)" $true) {
+    if (-not (Get-Command deno -ErrorAction SilentlyContinue)) {
         Write-Host "deno not found. Installing deno..."
         powershell -ExecutionPolicy Bypass -c "irm https://deno.land/install.ps1 | iex"
         $denoPath = Join-Path $HOME ".deno\bin"
@@ -69,14 +104,22 @@ if (-not (Get-Command deno -ErrorAction SilentlyContinue)) {
             $env:PATH = "$denoPath;$env:PATH"
         }
     } else {
-        Write-Host "Skipping Deno install."
+        Write-Host "Good! Deno is already installed!"
     }
+} else {
+    Write-Host "Skipping Deno install."
 }
 
 if (Ask-YesNo "Install Firefox? (recommended for cookie import)" $true) {
     Install-Firefox
 } else {
     Write-Host "Skipping Firefox install."
+}
+
+if (Ask-YesNo "Install FFmpeg? (recommended)" $true) {
+    Install-FFmpeg
+} else {
+    Write-Host "Skipping FFmpeg install."
 }
 
 Write-Host "Installing $packageName..."
