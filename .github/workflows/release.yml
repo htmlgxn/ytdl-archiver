@@ -12,6 +12,8 @@ jobs:
   build-setup-binary:
     name: setup-binary (${{ matrix.platform_tag }})
     runs-on: ${{ matrix.runs_on }}
+    env:
+      CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
     strategy:
       fail-fast: false
       matrix:
@@ -27,6 +29,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
@@ -39,6 +43,19 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: CI diagnostics
+        shell: bash
+        run: |
+          rustc --version
+          cargo --version
+          echo "CARGO_REGISTRIES_CRATES_IO_PROTOCOL=${CARGO_REGISTRIES_CRATES_IO_PROTOCOL}"
+
+      - name: Clear inherited GitHub auth headers
+        shell: bash
+        run: |
+          git config --global --unset-all http.https://github.com/.extraheader || true
+          git config --local --unset-all http.https://github.com/.extraheader || true
 
       - name: Build setup binary
         run: cargo build --manifest-path rust/setup_tui/Cargo.toml --release
@@ -60,6 +77,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
