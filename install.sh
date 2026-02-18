@@ -113,9 +113,9 @@ echo "Launching ${PACKAGE_NAME}..."
 
 set +e
 if command -v "${PACKAGE_NAME}" >/dev/null 2>&1; then
-  "${PACKAGE_NAME}"
+  "${PACKAGE_NAME}" archive
 else
-  uv tool run "${PACKAGE_NAME}"
+  uv tool run "${PACKAGE_NAME}" archive
 fi
 launch_exit=$?
 set -e
