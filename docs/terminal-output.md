@@ -1,50 +1,36 @@
-# Terminal Output While Archiving a YouTube Playlist
+# Terminal Output Reference
 
-## Normal/Progress Mode
+Output is formatter-driven and varies by mode.
 
-### 1. Header
-```
-📺 ytdl-archiver v2026.2.7
-```
+## Progress mode (default)
+Typical flow:
+1. Header with app name/version
+2. Playlist start line with playlist name and item count
+3. Per-video progress (tqdm bar when available)
+4. Video completion line
+5. Sidecar generation lines (NFO/thumbnail/subtitle when applicable)
+6. Playlist summary (`new`, `skipped`, `failed` or "already up to date")
 
-### 2. Playlist Start
-```
-📋 Processing: <playlist-name> (<n> videos)
-```
-
-### 3. Per-Video Progress
-During download, a tqdm progress bar shows:
-```
-🔵 <video-title> 45%|██████▌░░░░░| 45/100 [00:15<00:20, 1.2MB/s]
-```
-
-### 4. Video Completion (when done)
-```
-✅ Downloaded: <video-title> [1080p] <file-size>
-```
-
-### 5. Generated Files
-```
+Representative messages:
+```text
+📺 ytdl-archiver v<version>
+📋 Processing: <playlist> (<n> videos)
+🔵 <title> 45%|██████▌... [elapsed<remaining, rate]
+✅ Downloaded: <title> [1080p] <size>
 ✅ Generated: NFO metadata
 ✅ Generated: Thumbnail image
-✅ Generated: Subtitle file (if subtitles downloaded)
-```
-
-### 6. Skipped Videos (already archived)
-```
-⚠️ Warning: Already downloaded: <video-title>
-```
-
-### 7. Playlist Summary
-```
+⚠️ Warning: Already downloaded: <title>
 📊 Playlist Complete: <n> new, <n> skipped, <n> failed
 ```
-(or `📊 Playlist Complete: already up to date` if nothing new)
 
----
+## Quiet mode (`-q`)
+- Suppresses normal progress output.
+- Shows errors/warnings and failure-oriented summary output.
 
-## Other Modes
+## Verbose mode (`-v`)
+- Emits detailed informational/debug-style lines during download.
+- Includes additional technical output for troubleshooting.
 
-- **Quiet mode (`-q`)**: Only shows errors and final summary
-- **Verbose mode (`-v`)**: Shows full yt-dlp debug output with detailed progress info
-- **No colors (`--no-color`)**: Uses text symbols like `[OK]`, `[WARN]`, `[ERR]` instead of emojis
+## No color (`--no-color`)
+- Disables colored text and emoji-oriented presentation.
+- Output keeps core message text with plain, unsymbolized formatting.

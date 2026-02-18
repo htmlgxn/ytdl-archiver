@@ -1,29 +1,43 @@
 # Development
 
-## Running Tests
+## Setup
+```bash
+uv sync --dev
+```
+
+## Run tests
 ```bash
 uv run pytest
 ```
 
-## Code Quality
+## Code quality
 ```bash
-uv run ruff check src tests
-uv run ruff format src tests
-uv run ty src
+uv run ruff check .
+uv run ruff format .
+uv run ty check .
 ```
 
-## Project Structure
-```
+## Project structure
+```text
 src/ytdl_archiver/
-├── config/          # Configuration management
-├── core/            # Core functionality
-├── cli.py           # Command line interface
-└── exceptions.py    # Custom exceptions
+├── cli.py
+├── output.py
+├── exceptions.py
+├── config/
+│   ├── defaults.toml
+│   └── settings.py
+└── core/
+    ├── archive.py
+    ├── cookies.py
+    ├── downloader.py
+    ├── metadata.py
+    └── utils.py
 
 tests/
-├── test_cli/         # CLI tests
-├── test_config/       # Configuration tests
-├── test_core/         # Core functionality tests
-├── test_integration/  # Integration tests
-└── conftest.py       # Test configuration
+├── conftest.py
+├── test_cli/
+├── test_config/
+├── test_core/
+├── test_integration/
+└── test_output/
 ```

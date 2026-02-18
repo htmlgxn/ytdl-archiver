@@ -176,7 +176,7 @@ class BrowserCookieRefresher:
                     error=str(e),
                 )
                 continue
-            except Exception as e:
+            except (OSError, ValueError, RuntimeError, TypeError) as e:
                 raise CookieRefreshError(
                     "Failed to extract cookies from browser 'firefox' "
                     f"using {label}: {e!s}"
@@ -213,7 +213,7 @@ class BrowserCookieRefresher:
                 source = f"requested:{profile}" if profile else "auto-discovery"
         except CookieRefreshError:
             raise
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError, TypeError) as e:
             raise CookieRefreshError(
                 f"Failed to extract cookies from browser '{normalized_browser}': {e!s}"
             ) from e
@@ -233,7 +233,7 @@ class BrowserCookieRefresher:
                 source=source,
                 path=str(target_path),
             )
-        except Exception as e:
+        except OSError as e:
             if temp_path.exists():
                 temp_path.unlink()
             raise CookieRefreshError(

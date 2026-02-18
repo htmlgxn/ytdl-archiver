@@ -1,187 +1,116 @@
-# Migration Guide: v1.x to v2.0
+# Migration Guide: Legacy Setup to Current CLI
 
-This guide helps you migrate from the legacy ytdl-archiver to the modern v2.0 architecture.
+This guide covers migration from older `archive.py`/JSON-style setups to the current command-based CLI and TOML-first configuration.
 
-## Breaking Changes
+## Breaking/Behavioral Changes
 
-### 1. Installation Method
-**Before:**
-```bash
-git clone https://github.com/htmlgxn/ytdl-archiver.git
-cd ytdl-archiver
-python archive.py
-```
-
-**After:**
-```bash
-git clone https://github.com/htmlgxn/ytdl-archiver.git
-cd ytdl-archiver
-uv sync
-uv run ytdl-archiver archive
-```
-
-### 2. Configuration
-**Before:** Hardcoded values in `archive.py`
-
-**After:** TOML configuration file
-
-### 3. CLI Interface
-**Before:** Positional arguments
+### 1. Entry point changed
+Before:
 ```bash
 python archive.py -j playlists.json -d /path/to/archive
 ```
 
-**After:** Modern CLI with commands
+After:
 ```bash
-uv run ytdl-archiver archive -p playlists.toml -d /path/to/archive
+uv run ytdl-archiver archive -p /path/to/playlists.toml -d /path/to/archive
 ```
+
+### 2. Configuration moved to TOML
+Before: hardcoded/script-level values.
+
+After: merged defaults + user config in `~/.config/ytdl-archiver/config.toml`.
+
+### 3. Playlists are config-dir based by default
+Current lookup order:
+1. Explicit `--playlists` value
+2. `~/.config/ytdl-archiver/playlists.toml`
+3. `~/.config/ytdl-archiver/playlists.json` (legacy)
+4. fallback target path `~/.config/ytdl-archiver/playlists.toml`
+
+Startup migration behavior:
+- If `playlists.toml` or `playlists.json` exists in the working directory and config-dir `playlists.toml` does not, the file is moved into the config directory.
 
 ## Migration Steps
 
-### Step 1: Install Dependencies
-Install uv if you haven't already. See [alternative installation methods](https://docs.astral.sh/uv/getting-started/installation/):
+### Step 1: Install dependencies
 ```bash
-# macOS / Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Windows (PowerShell)
-irm https://astral.sh/uv/install.ps1 | iex
-
-# Or via pip (if we're still doing that)
-pip install uv
+git clone https://github.com/htmlgxn/ytdl-archiver.git
+cd ytdl-archiver
+uv sync --dev
 ```
 
-### Step 2: Initialize Configuration
+### Step 2: Initialize config
 ```bash
 uv run ytdl-archiver init-config
 ```
 
-This creates `~/.config/ytdl-archiver/config.toml`.
-
-### Step 3: Migrate Configuration
-Your old settings need to be converted to TOML format:
-
-**Old hardcoded settings:**
-```python
-# In archive.py
-time.sleep(10)  # delay_between_videos
-time.sleep(30)  # delay_between_playlists
-```
-
-**New TOML configuration:**
-```toml
-[archive]
-delay_between_videos = 10
-delay_between_playlists = 30
-```
-
-### Step 4: Update Playlists File
-
-#### Option A: Convert to TOML (Recommended)
-Use the new convert command:
+### Step 3: Move/convert playlists
+Option A (recommended): convert legacy JSON to TOML.
 ```bash
 uv run ytdl-archiver convert-playlists -i playlists.json -o playlists.toml
 ```
 
-Your new `playlists.toml` will look like:
-```toml
-[[playlists]]
-id = "UUxxxxxxxxxxxxxxxxxxxxxx"
-path = "Channel Name"
+Option B: continue using JSON (legacy supported).
 
-[[playlists]]
-id = "PLOggx_xxxxxxxxxxxxxxxxxx_xxxxxxxx"
-path = "unlisted/cool_videos"
+### Step 4: Run archive
+```bash
+uv run ytdl-archiver archive
 ```
 
-#### Option B: Keep JSON (Legacy)
-Your existing `playlists.json` file will work without changes:
+## Config Mapping (Legacy -> Current)
 
-```json
-[
-    {
-        "id": "UUxxxxxxxxxxxxxxxxxxxxxx",
-        "path": "Channel Name"
-    },
-    {
-        "id": "PLOggx_xxxxxxxxxxxxxxxxxx_xxxxxxxx",
-        "path": "unlisted/cool_videos"
-    }
-]
+| Legacy idea | Global config key (snake_case) | yt-dlp option key | Playlist override keys accepted |
+|---|---|---|---|
+| Subtitles on/off | `download.write_subtitles` | `writesubtitles` | `writesubtitles` or `write_subtitles` |
+| Subtitle format | `download.subtitle_format` | `subtitlesformat` | `subtitlesformat` or `subtitle_format` |
+| Subtitle conversion | `download.convert_subtitles` | `convertsubtitles` | `convertsubtitles` or `convert_subtitles` |
+| Subtitle languages | `download.subtitle_languages` | `subtitleslangs` | `subtitleslangs` or `subtitle_languages` |
+| Thumbnail on/off | `download.write_thumbnail` | `writethumbnail` | `writethumbnail` or `write_thumbnail` |
+| Container format | `download.merge_output_format` | `merge_output_format` | `merge_output_format` |
+| Video format selection | `download.format` | `format` | `format` |
+
+## CLI Surface (current)
+
+### Top-level
+```bash
+uv run ytdl-archiver --help
 ```
+Commands:
+- `archive`
+- `convert-playlists`
+- `init-config`
 
-### Step 5: Update Service Files
-If you use systemd, update your service file:
+Global options:
+- `-c, --config PATH`
+- `-v, --verbose`
+- `-q, --quiet`
+- `--no-color`
 
-**Before:**
+### Archive command
+```bash
+uv run ytdl-archiver archive --help
+```
+Options:
+- `-p, --playlists PATH`
+- `-d, --directory PATH`
+- `--cookies-browser [firefox|chrome|chromium|brave|edge|opera|vivaldi|whale|safari]`
+- `--cookies-profile TEXT`
+
+## systemd migration note
+If migrating from a direct Python script service, switch `ExecStart` to command form:
 ```ini
-ExecStart=/usr/bin/python /home/username/ytdl-archiver/archive.py
-```
-
-**After:**
-```ini
-ExecStart=/usr/bin/uv run ytdl-archiver archive
+ExecStart=uv run ytdl-archiver archive
 WorkingDirectory=/home/username/ytdl-archiver
 ```
 
-## New Features in v2.0
-
-### 1. Structured Logging
-- JSON format for better log parsing
-- Configurable log levels
-- File rotation support
-
-### 2. Retry Logic
-- Automatic retries with exponential backoff
-- Configurable retry attempts
-
-### 3. Better Error Handling
-- Custom exception types
-- Graceful error recovery
-
-### 4. Configuration Validation
-- Validates configuration on startup
-- Clear error messages
-
-### 5. Modern CLI
-- Help system
-- Command structure
-- Verbose mode
-
-## Configuration Mapping
-
-| Old Setting | New TOML Path | Description |
-|-------------|----------------|-------------|
-| `time.sleep(10)` | `archive.delay_between_videos` | Delay between videos |
-| `time.sleep(30)` | `archive.delay_between_playlists` | Delay between playlists |
-| `ydl_opts['format']` | `download.format` | Video format |
-| `writesubtitles: True` | `download.write_subtitles` | Download subtitles |
-| `writethumbnail: True` | `download.write_thumbnail` | Download thumbnails |
-
 ## Troubleshooting
 
-### Configuration Issues
-Validate your configuration:
+### Validate command availability
 ```bash
 uv run ytdl-archiver --help
 ```
 
-### Dependency Issues
-If you encounter dependency conflicts:
+### Re-sync environment
 ```bash
-uv sync
+uv sync --dev
 ```
-
-## Rollback Plan
-
-If you need to rollback to v1.x:
-
-1. Keep your old `archive.py` and `dependancies/` folder
-2. Use the old command: `python archive.py`
-3. Consider filing an issue for v2.0 problems
-
-## Support
-
-- Check the new documentation in README.md
-- Use `uv run ytdl-archiver --help`
-- File issues on GitHub for migration problems

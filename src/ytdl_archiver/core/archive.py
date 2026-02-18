@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ..exceptions import ArchiveError
+from ..exceptions import ArchiveError, ConfigurationError, DownloadError, MetadataError
 from ..output import emit_formatter_message, emit_rendered
 from .cookies import BrowserCookieRefresher
 
@@ -48,9 +48,9 @@ class ArchiveTracker:
                 self.archive_file.parent.mkdir(parents=True, exist_ok=True)
                 self.archive_file.touch()
                 logger.info("Created new archive file", path=str(self.archive_file))
-        except Exception as e:
+        except OSError as e:
             logger.error("Failed to load archive", error=str(e))
-            raise ArchiveError(f"Failed to load archive: {e}")
+            raise ArchiveError(f"Failed to load archive: {e}") from e
 
     def is_downloaded(self, video_id: str) -> bool:
         """Check if video has been downloaded."""
@@ -63,11 +63,11 @@ class ArchiveTracker:
             with open(self.archive_file, "a") as f:
                 f.write(video_id + "\n")
             logger.debug("Marked video as downloaded", video_id=video_id)
-        except Exception as e:
+        except OSError as e:
             logger.error(
                 "Failed to mark video as downloaded", video_id=video_id, error=str(e)
             )
-            raise ArchiveError(f"Failed to mark video as downloaded: {e}")
+            raise ArchiveError(f"Failed to mark video as downloaded: {e}") from e
 
     def get_downloaded_count(self) -> int:
         """Get count of downloaded videos."""
@@ -258,7 +258,7 @@ class PlaylistArchiver:
                             title=metadata.get("title"),
                         )
 
-            except Exception as e:
+            except (ArchiveError, DownloadError, MetadataError, OSError, ValueError) as e:
                 stats["failed"] += 1
                 if self.formatter:
                     emit_rendered(
@@ -342,7 +342,7 @@ class PlaylistArchiver:
                 nfo_path = video_file.with_suffix(".nfo")
                 self.metadata_generator.create_nfo_file(metadata, nfo_path)
 
-        except Exception as e:
+        except (MetadataError, OSError, ValueError, RuntimeError, TypeError) as e:
             logger.error("Failed to generate NFO", error=str(e))
 
     def run(self) -> None:
@@ -364,14 +364,14 @@ class PlaylistArchiver:
         # Load playlists
         try:
             playlists = self.config.load_playlists()
-        except Exception as e:
+        except (ConfigurationError, ArchiveError, OSError, ValueError) as e:
             if self.formatter:
                 self._emit_formatter_message(
                     "error", f"Failed to load playlists - {e!s}"
                 )
             else:
                 logger.error("Failed to load playlists", error=str(e))
-            raise ArchiveError(f"Failed to load playlists: {e}")
+            raise ArchiveError(f"Failed to load playlists: {e}") from e
 
         if self.formatter:
             emit_rendered(
@@ -404,7 +404,7 @@ class PlaylistArchiver:
                         logger.info("Waiting before next playlist", delay=delay)
                         time.sleep(delay)
 
-            except Exception as e:
+            except (ArchiveError, DownloadError, OSError, ValueError, RuntimeError) as e:
                 logger.error(
                     "Failed to process playlist", playlist_id=playlist_id, error=str(e)
                 )

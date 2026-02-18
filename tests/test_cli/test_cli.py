@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 
 from click.testing import CliRunner
 
+from ytdl_archiver import __version__
 from ytdl_archiver.cli import cli
 
 
@@ -70,6 +71,7 @@ class TestCLI:
             mock_config.validate.return_value = None
             mock_config.ensure_playlists_file.return_value = None
             mock_config.as_dict.return_value = {"logging": {"level": "INFO"}}
+            mock_config.migrate_playlists_from_cwd.return_value = None
             mock_config.get_cookie_file_target_path.return_value = (
                 Path(temp_dir) / "cookies.txt"
             )
@@ -116,6 +118,7 @@ class TestCLI:
             mock_config.validate.return_value = None
             mock_config.ensure_playlists_file.return_value = None
             mock_config.as_dict.return_value = {"logging": {"level": "INFO"}}
+            mock_config.migrate_playlists_from_cwd.return_value = None
             mock_config.get_cookie_file_target_path.return_value = (
                 Path(temp_dir) / "cookies.txt"
             )
@@ -155,6 +158,32 @@ base_directory = "/this/path/should/not/exist"
             assert result.exit_code != 0
             assert "Archive failed" in result.output
             assert "UnboundLocalError" not in result.output
+
+    @patch("ytdl_archiver.cli.PlaylistArchiver")
+    @patch("ytdl_archiver.cli.Config")
+    def test_archive_header_uses_package_version(self, mock_config_class, mock_archiver):
+        """Test archive header includes package __version__."""
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text("")
+
+            mock_config = Mock()
+            mock_config.validate.return_value = None
+            mock_config.ensure_playlists_file.return_value = None
+            mock_config.as_dict.return_value = {"logging": {"level": "INFO"}}
+            mock_config.migrate_playlists_from_cwd.return_value = None
+            mock_config_class.return_value = mock_config
+
+            mock_archiver_instance = Mock()
+            mock_archiver.return_value = mock_archiver_instance
+
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "archive"],
+            )
+
+            assert result.exit_code == 0
+            assert f"v{__version__}" in result.output
 
     def test_invalid_command(self):
         """Test invalid CLI command."""

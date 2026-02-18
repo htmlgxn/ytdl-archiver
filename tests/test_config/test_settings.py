@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 import toml
+from click.testing import CliRunner
 
 from ytdl_archiver.config.settings import Config
 from ytdl_archiver.exceptions import ConfigurationError
@@ -144,6 +145,21 @@ class TestConfig:
         playlist_config = config.get_playlist_config("test_playlist_id")
         assert playlist_config["format"] == "best[height<=480]"
         assert playlist_config["write_subtitles"] is True
+
+    def test_playlist_config_includes_global_snake_case_defaults(self, temp_config_dir):
+        """Test global download defaults use snake_case keys in merged config."""
+        config_file = temp_config_dir / "config.toml"
+        config_file.write_text("")
+        playlists_file = temp_config_dir / "playlists.toml"
+        playlists_file.write_text('[[playlists]]\nid = "default_playlist"\npath = "A"\n')
+
+        config = Config(config_file)
+        playlist_config = config.get_playlist_config("default_playlist")
+
+        assert playlist_config["write_subtitles"] is True
+        assert playlist_config["write_thumbnail"] is True
+        assert playlist_config["subtitle_format"] == "vtt"
+        assert playlist_config["convert_subtitles"] == "srt"
 
     def test_playlists_file_override_is_used(self, temp_config_dir, temp_dir):
         """Test explicit playlists file override from CLI/config API."""
@@ -295,3 +311,40 @@ write_subtitles = false
 
         # Should reflect new values
         assert config.get("archive.delay_between_videos") == 10
+
+    def test_config_init_has_no_playlist_migration_side_effect(self):
+        """Test Config initialization does not move CWD playlist files."""
+        runner = CliRunner()
+        with runner.isolated_filesystem() as temp_dir:
+            root = Path(temp_dir)
+            (root / "playlists.toml").write_text(
+                '[[playlists]]\nid = "test_playlist"\npath = "Root"\n'
+            )
+            config_dir = root / "cfg"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            config_file = config_dir / "config.toml"
+            config_file.write_text("")
+
+            _ = Config(config_file)
+
+            assert (root / "playlists.toml").exists()
+            assert not (config_dir / "playlists.toml").exists()
+
+    def test_explicit_playlist_migration_moves_file_from_cwd(self):
+        """Test explicit migration helper moves CWD playlists into config dir."""
+        runner = CliRunner()
+        with runner.isolated_filesystem() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "playlists.toml"
+            source.write_text('[[playlists]]\nid = "test_playlist"\npath = "Root"\n')
+            config_dir = root / "cfg"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            config_file = config_dir / "config.toml"
+            config_file.write_text("")
+
+            config = Config(config_file)
+            migrated = config.migrate_playlists_from_cwd()
+
+            assert migrated == config_dir / "playlists.toml"
+            assert not source.exists()
+            assert (config_dir / "playlists.toml").exists()

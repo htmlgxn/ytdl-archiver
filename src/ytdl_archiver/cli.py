@@ -7,11 +7,13 @@ from pathlib import Path
 import click
 import toml
 
+from . import __version__
 from .config.settings import Config
 from .core.archive import PlaylistArchiver
 from .core.cookies import SUPPORTED_BROWSERS, BrowserCookieRefresher
+from .exceptions import ConfigurationError, CookieRefreshError
 from .core.utils import setup_logging
-from .output import detect_output_mode, should_use_colors
+from .output import detect_output_mode, emit_rendered, get_formatter, should_use_colors
 
 try:
     import structlog
@@ -65,6 +67,7 @@ def cli(
 
         # Store formatter and settings in context
         ctx.obj["config"] = Config(config)
+        migrated_playlists = ctx.obj["config"].migrate_playlists_from_cwd()
         ctx.obj["output_mode"] = output_mode
         ctx.obj["use_colors"] = use_colors
 
@@ -76,12 +79,17 @@ def cli(
 
         # Setup appropriate logging - no console output for clean formatter experience
         # Only enable console logging for verbose mode or errors
-        console_output = verbose or ctx.obj.get("output_mode") == "verbose"
+        console_output = output_mode.value == "verbose"
         setup_logging(ctx.obj["config"].as_dict(), console_output=console_output)
 
-        logger.info("YTDL-Archiver started", version="2026.2.7")
+        logger.info("YTDL-Archiver started", version=__version__)
+        if migrated_playlists:
+            logger.info("Migrated playlists file", path=str(migrated_playlists))
 
-    except Exception as e:
+    except ConfigurationError as e:
+        click.echo(f"Error initializing application: {e}", err=True)
+        sys.exit(1)
+    except (OSError, toml.TomlDecodeError, ValueError) as e:
         click.echo(f"Error initializing application: {e}", err=True)
         sys.exit(1)
 
@@ -135,13 +143,10 @@ def archive(
         # CRITICAL: Ensure playlists file exists BEFORE running archiver
         config.ensure_playlists_file()
 
-        # Get appropriate formatter
-        from .output import get_formatter
-
         formatter = get_formatter(use_colors, show_progress=True, mode=output_mode)
 
         # Print header
-        print(formatter.header("2026.2.7"))
+        emit_rendered(formatter.header(__version__))
 
         cookie_refresher = None
         skip_initial_cookie_refresh = False
@@ -157,7 +162,7 @@ def archive(
                     cookie_target,
                 )
                 skip_initial_cookie_refresh = True
-            except Exception as e:
+            except (CookieRefreshError, OSError, ValueError, RuntimeError) as e:
                 message = formatter.error(
                     f"Cookie refresh failed at startup (browser={normalized_browser}) - {e!s}"
                 )
@@ -183,7 +188,7 @@ def archive(
         else:
             click.echo("Operation cancelled by user", err=True)
         sys.exit(130)
-    except Exception as e:
+    except (ConfigurationError, CookieRefreshError, OSError, RuntimeError) as e:
         if formatter:
             message = formatter.error(f"Archive failed - {e!s}")
             if message:
@@ -225,7 +230,7 @@ def convert_playlists(input: Path, output: Path | None) -> None:
 
         click.echo(f"Converted {input} to {output}")
 
-    except Exception as e:
+    except (json.JSONDecodeError, OSError, toml.TomlDecodeError, ValueError) as e:
         click.echo(f"Error converting playlists: {e}", err=True)
         sys.exit(1)
 
@@ -244,9 +249,6 @@ def init_config(output: Path | None) -> None:
 
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    # Copy default configuration
-    import toml
-
     defaults_path = Path(__file__).parent / "config" / "defaults.toml"
 
     try:
@@ -259,7 +261,7 @@ def init_config(output: Path | None) -> None:
         click.echo(f"Configuration file created at: {output}")
         click.echo("Edit this file to customize your archiver settings.")
 
-    except Exception as e:
+    except (OSError, toml.TomlDecodeError, ValueError) as e:
         click.echo(f"Error creating configuration file: {e}", err=True)
         sys.exit(1)
 
