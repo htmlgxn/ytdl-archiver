@@ -110,6 +110,17 @@ class PlaylistArchiver:
         self.downloader = YouTubeDownloader(self.config, self.formatter)
         self.metadata_generator = MetadataGenerator(self.config)
 
+    def _emit_formatter_message(self, level: str, message: str) -> None:
+        """Print formatter messages consistently."""
+        if not self.formatter:
+            return
+        formatter_fn = getattr(self.formatter, level, None)
+        if formatter_fn is None:
+            return
+        rendered = formatter_fn(message)
+        if rendered:
+            print(rendered)
+
     def process_playlist(self, playlist_id: str, playlist_path: str) -> None:
         """Process a single playlist."""
         base_directory = self.config.get_archive_directory()
@@ -122,10 +133,12 @@ class PlaylistArchiver:
 
         if not playlist_info or "entries" not in playlist_info:
             if self.formatter:
-                self.formatter.error(
+                self._emit_formatter_message(
+                    "error",
                     f"Failed to get playlist info for {playlist_path} (ID: {playlist_id})"
                 )
-                self.formatter.error(
+                self._emit_formatter_message(
+                    "error",
                     "Please check that the playlist ID is correct and the playlist is public"
                 )
             else:
@@ -142,6 +155,15 @@ class PlaylistArchiver:
                 f"Processing: {playlist_path}", len(playlist_info.get("entries", []))
             )
             print(playlist_msg)
+
+            cookie_path = self.config.get_cookie_file_path()
+            if cookie_path and not playlist_info.get("entries"):
+                print(
+                    self.formatter.warning(
+                        "Playlist is empty but cookies.txt exists - "
+                        "you may need to re-authenticate your cookies"
+                    )
+                )
 
         # Initialize archive tracker
         archive_file = output_directory / ".archive.txt"
@@ -174,7 +196,9 @@ class PlaylistArchiver:
             # Download video
             try:
                 # Get playlist-specific configuration
-                playlist_config = self.config.get_playlist_config(playlist_id)
+                playlist_config = self.config.get_playlist_config(
+                    playlist_id, playlist_path
+                )
 
                 metadata = self.downloader.download_video_with_config(
                     video_url, output_directory, playlist_config
@@ -254,6 +278,12 @@ class PlaylistArchiver:
             "noplaylist": False,
         }
 
+        cookie_path = self.config.get_cookie_file_path()
+        if cookie_path:
+            opts["cookiefile"] = str(cookie_path)
+
+        opts["extractor_args"] = {"youtube": {"player_client": "default"}}
+
         try:
             import yt_dlp
 
@@ -297,7 +327,9 @@ class PlaylistArchiver:
 
         if not playlists_file.exists():
             if self.formatter:
-                self.formatter.error(f"Playlists file not found: {playlists_file}")
+                self._emit_formatter_message(
+                    "error", f"Playlists file not found: {playlists_file}"
+                )
             else:
                 logger.error("Playlists file not found", path=playlists_file)
             raise ArchiveError(f"Playlists file not found: {playlists_file}")
@@ -307,7 +339,7 @@ class PlaylistArchiver:
             playlists = self.config.load_playlists()
         except Exception as e:
             if self.formatter:
-                self.formatter.error(f"Failed to load playlists - {e!s}")
+                self._emit_formatter_message("error", f"Failed to load playlists - {e!s}")
             else:
                 logger.error("Failed to load playlists", error=str(e))
             raise ArchiveError(f"Failed to load playlists: {e}")
@@ -322,7 +354,7 @@ class PlaylistArchiver:
 
             if not playlist_id or not playlist_path:
                 if self.formatter:
-                    self.formatter.warning("Invalid playlist entry - skipping")
+                    self._emit_formatter_message("warning", "Invalid playlist entry - skipping")
                 else:
                     logger.warning("Invalid playlist entry", playlist=playlist)
                 continue

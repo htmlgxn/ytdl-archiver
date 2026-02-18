@@ -33,3 +33,6 @@ Thumbs.db
 # Development tools
 dev-tools/
 dev-files/
+
+# Personal
+.tmp/
