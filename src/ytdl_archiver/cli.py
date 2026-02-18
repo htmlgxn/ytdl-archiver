@@ -48,7 +48,7 @@ except ImportError:
 @click.option(
     "--no-color",
     is_flag=True,
-    help="Disable colors and emoji in output",
+    help="Disable colored text in output",
 )
 @click.pass_context
 def cli(

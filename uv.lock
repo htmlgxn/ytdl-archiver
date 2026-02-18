@@ -72,19 +72,6 @@ wheels = [
 ]
 
 [[package]]
-name = "deno"
-version = "2.6.10"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1c/a8/74db2941f56186028b6e91c6116a3e52c8459dfa28a5f990f578be2b69eb/deno-2.6.10.tar.gz", hash = "sha256:41c12a75197da6d9db20120eee7585c27766af0ac62c817c085c93dfc4081428", size = 8128, upload-time = "2026-02-17T16:09:30.841Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/15/2f/030638bfabbd63df9562e3900b791d6c07e5a30346d359cf45a5e1fc4097/deno-2.6.10-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:c381b068b6f58ca1c19a0cf062c8489ee1c7fe430d3ebc48db944f5c80beb2c2", size = 45118320, upload-time = "2026-02-17T16:09:16.536Z" },
-    { url = "https://files.pythonhosted.org/packages/08/dc/0f71ff9dd513c8cc094dc76640f80088a27ea9a3b1fc2decd60a8a27148a/deno-2.6.10-py3-none-macosx_11_0_arm64.whl", hash = "sha256:f2da72aa734463600a5a16efd786a4aecd22ddcd6ea907f56fca15f9eb3ca794", size = 42060974, upload-time = "2026-02-17T16:09:19.655Z" },
-    { url = "https://files.pythonhosted.org/packages/33/f7/3774540e14111026251aef134bf3de3ae1c0591866f05ce5debc97248127/deno-2.6.10-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:b98d6fc98a9cbc10219f6c6d6f2a6e10d1954416bbcd4371d317fc9c20050576", size = 45789105, upload-time = "2026-02-17T16:09:22.413Z" },
-    { url = "https://files.pythonhosted.org/packages/21/80/a2b5827f4715f0bcb5a550728ac98a32258f31e2a6f1c63803a078a425b0/deno-2.6.10-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:d1600f4ee7b4a9699b7057841bdb5d7b7eac3fb073df072540064166841c2f4c", size = 47737107, upload-time = "2026-02-17T16:09:25.339Z" },
-    { url = "https://files.pythonhosted.org/packages/93/60/75fbdc63d97f381182be1eeebe4bd1630d9819d05ae7c20143f700856a3a/deno-2.6.10-py3-none-win_amd64.whl", hash = "sha256:dc0b6b7a3e558b159c6e599eab6556766c96fe1d75d59383ce291ebf0083fcfd", size = 47088397, upload-time = "2026-02-17T16:09:28.571Z" },
-]
-
-[[package]]
 name = "distlib"
 version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -385,7 +372,6 @@ source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "colorama" },
-    { name = "deno" },
     { name = "pathvalidate" },
     { name = "structlog" },
     { name = "tenacity" },
@@ -409,7 +395,6 @@ dev = [
 requires-dist = [
     { name = "click", specifier = ">=8.1.7,<9.0.0" },
     { name = "colorama", specifier = ">=0.4.6,<0.5.0" },
-    { name = "deno", specifier = ">=2.6.10" },
     { name = "pathvalidate", specifier = ">=3.0.0,<4.0.0" },
     { name = "structlog", specifier = ">=24.2.0,<25.0.0" },
     { name = "tenacity", specifier = ">=9.0.0,<10.0.0" },

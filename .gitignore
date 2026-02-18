@@ -5,6 +5,7 @@ dist/
 build/
 *.egg-info/
 .venv/
+.ruff_cache/
 
 # Agents
 .agents/

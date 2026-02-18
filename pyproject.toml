@@ -1,20 +1,28 @@
 [project]
 name = "ytdl-archiver"
 version = "2026.2.18"
-description = "Modern YouTube playlist archiver with media server metadata support"
+description = "Modern Python CLI for archiving YouTube playlists with media-server metadata support"
 readme = "README.md"
 requires-python = ">=3.14"
 license = {text = "Unlicense"}
 authors = [
     {name = "Ben Chitty", email = "htmlgxn@pm.me"},
 ]
-keywords = ["youtube", "archiver", "media-server", "jellyfin", "emby"]
+keywords = ["youtube", "archive", "yt-dlp", "media-server", "cli"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: OS Independent",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Utilities",
+    "Environment :: Console",
+]
 dependencies = [
     # Core runtime
     "yt-dlp>=2026.2.4",
-    # JS runtime integration used by yt-dlp ecosystem features
+    # yt-dlp JS integration helpers (runtime JS engine is an external tool)
     "yt-dlp-ejs>=0.4.0",
-    "deno>=2.6.10",
     "toml>=0.10.2,<0.11.0",
     "structlog>=24.2.0,<25.0.0",
     "tenacity>=9.0.0,<10.0.0",

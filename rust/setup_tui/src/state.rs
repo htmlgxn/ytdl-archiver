@@ -193,6 +193,7 @@ impl WizardState {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> Action {
+        let is_text_step = matches!(self.step, Step::ArchiveDirectory | Step::CookieProfile);
         if key.modifiers.contains(KeyModifiers::CONTROL)
             && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('C'))
         {
@@ -200,7 +201,7 @@ impl WizardState {
         }
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') => return Action::Cancel,
-            KeyCode::Char('b') | KeyCode::Char('B') => {
+            KeyCode::Char('b') | KeyCode::Char('B') if !is_text_step => {
                 self.previous_step();
                 return Action::None;
             }
@@ -484,5 +485,14 @@ mod tests {
 
         state.handle_key(key(KeyCode::Left));
         assert_eq!(state.defaults_index(), 0);
+    }
+
+    #[test]
+    fn b_is_typed_in_archive_directory_instead_of_navigating_back() {
+        let mut state = WizardState::new(SetupAnswers::default());
+        state.handle_key(key(KeyCode::Delete));
+        state.handle_key(key(KeyCode::Char('b')));
+        assert_eq!(state.step(), Step::ArchiveDirectory);
+        assert_eq!(state.archive_input(), "b");
     }
 }

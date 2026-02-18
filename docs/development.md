@@ -17,34 +17,64 @@ uv run ruff format .
 uv run ty check .
 ```
 
-## Setup wizard (ratatui) development
-Build the setup wizard binary:
+## Documentation maintenance
+When changing behavior, update docs in the same change:
+- `README.md` for quickstart/onboarding
+- `docs/cli.md` for command/env reference
+- `docs/configuration.md` for config semantics and defaults
+- `MIGRATION.md` only for legacy-delta migration notes
+
+Validation checks:
+```bash
+UV_CACHE_DIR=.uv-cache uv run ytdl-archiver --help
+UV_CACHE_DIR=.uv-cache uv run ytdl-archiver archive --help
+UV_CACHE_DIR=.uv-cache uv run ytdl-archiver init --help
+```
+
+## Setup wizard (`ratatui`) development
+Build and stage the setup wizard binary:
 ```bash
 cargo build --manifest-path rust/setup_tui/Cargo.toml --release
 python scripts/stage_setup_tui_binary.py
 ```
 
-The staged binary is copied into `src/ytdl_archiver/setup/bin/` and bundled into wheels.
-The staging script writes a platform-tagged filename (for example,
-`ytdl-archiver-setup-tui-linux-x86_64`) and the runtime bridge picks the matching one.
-Source installs also try an auto-build fallback at setup runtime unless
-`YTDL_ARCHIVER_SETUP_TUI_AUTOBUILD=0` is set.
+Staged binaries are copied to `src/ytdl_archiver/setup/bin/` and bundled in wheels using a platform-tagged name (example: `ytdl-archiver-setup-tui-linux-x86_64`).
 
-The wizard binary requires file arguments. `cargo run` without args is expected to fail:
+Source installs can auto-build on setup execution unless disabled with:
+```bash
+YTDL_ARCHIVER_SETUP_TUI_AUTOBUILD=0
+```
+
+Manual wizard dev run (`cargo run` without args is expected to fail):
 ```bash
 cargo run --manifest-path rust/setup_tui/Cargo.toml -- \
   --defaults /tmp/defaults.json \
   --result /tmp/result.json
 ```
 
+Useful setup env vars:
+- `YTDL_ARCHIVER_SETUP_TUI_BIN`: explicit setup binary path
+- `YTDL_ARCHIVER_SETUP_TUI_AUTOBUILD`: enable/disable runtime auto-build (`1`/`0`)
+- `YTDL_ARCHIVER_SETUP_TUI_BUILD_TIMEOUT`: auto-build timeout seconds (default `300`)
+
+## Release packaging
+Release CI is defined in `.github/workflows/release.yml` and does:
+1. Build/stage setup binaries on each supported platform runner.
+2. Collect binaries into a single wheel build job.
+3. Build `sdist` and wheel with bundled setup binaries.
+4. Verify wheel contents include all expected setup binaries.
+5. Publish to PyPI on `v*` tags (Trusted Publishing).
+
 UI behavior notes:
-- Normal terminal sizes render a centered one-page progressive form (visual 4:3 target) with instructional section titles and dimmed inactive sections.
-- Small terminals fall back to a paged step-by-step layout.
-- Setup defaults prefer browser cookie import with Firefox preselected.
+- Normal terminal sizes render a centered one-page progressive form.
+- Small terminals fall back to paged step-by-step rendering.
+- Defaults prefer browser cookie refresh with Firefox preselected.
 
 ## Project structure
 ```text
 src/ytdl_archiver/
+├── __init__.py
+├── __main__.py
 ├── cli.py
 ├── output.py
 ├── exceptions.py
@@ -52,11 +82,13 @@ src/ytdl_archiver/
 │   ├── defaults.toml
 │   └── settings.py
 ├── setup/
-│   ├── models.py
-│   ├── templates.py
-│   ├── writer.py
+│   ├── bin/
 │   ├── fallback_prompts.py
-│   └── runner.py
+│   ├── models.py
+│   ├── ratatui_bridge.py
+│   ├── runner.py
+│   ├── templates.py
+│   └── writer.py
 └── core/
     ├── archive.py
     ├── cookies.py
@@ -64,11 +96,16 @@ src/ytdl_archiver/
     ├── metadata.py
     └── utils.py
 
-tests/
-├── conftest.py
-├── test_cli/
-├── test_config/
-├── test_core/
-├── test_integration/
-└── test_output/
+docs/
+├── index.md
+├── cli.md
+├── configuration.md
+├── development.md
+└── terminal-output.md
+
+rust/
+└── setup_tui/
+
+scripts/
+└── stage_setup_tui_binary.py
 ```
