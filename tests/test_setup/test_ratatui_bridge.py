@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -130,11 +131,15 @@ def test_run_ratatui_setup_missing_env_binary(monkeypatch):
 
 
 def test_run_ratatui_setup_uses_cargo_fallback(monkeypatch):
-    """Bridge does not attempt cargo fallback when binary is unavailable."""
+    """Bridge fails with clear guidance when no binary source is available."""
     monkeypatch.delenv("YTDL_ARCHIVER_SETUP_TUI_BIN", raising=False)
+    monkeypatch.setattr(
+        "ytdl_archiver.setup.ratatui_bridge._packaged_binary_candidates",
+        lambda: [],
+    )
     monkeypatch.setattr("ytdl_archiver.setup.ratatui_bridge._binary_candidates", lambda: [])
 
-    with pytest.raises(FileNotFoundError, match="cargo build"):
+    with pytest.raises(FileNotFoundError, match=r"stage_setup_tui_binary\.py"):
         run_ratatui_setup(SetupAnswers())
 
 
@@ -167,6 +172,44 @@ def test_run_ratatui_setup_invokes_subprocess_without_pipes(monkeypatch, temp_di
     assert kwargs.get("check") is False
     assert "capture_output" not in kwargs
     assert "input" not in kwargs
+
+
+def test_run_ratatui_setup_uses_packaged_binary_candidate(monkeypatch, temp_dir):
+    """Bridge prefers packaged binary candidates when env override is absent."""
+    fake_bin = temp_dir / "packaged-setup-ui"
+    fake_bin.write_text("")
+    monkeypatch.delenv("YTDL_ARCHIVER_SETUP_TUI_BIN", raising=False)
+    monkeypatch.setattr(
+        "ytdl_archiver.setup.ratatui_bridge._packaged_binary_candidates",
+        lambda: [fake_bin],
+    )
+    monkeypatch.setattr("ytdl_archiver.setup.ratatui_bridge._binary_candidates", lambda: [])
+    monkeypatch.setattr(
+        "ytdl_archiver.setup.ratatui_bridge.resources.as_file",
+        lambda candidate: nullcontext(candidate),
+    )
+    payload = {
+        "archive_directory": "/tmp/media",
+        "cookie_source": "browser",
+        "cookie_browser": "firefox",
+        "cookie_profile": "",
+        "write_subtitles": True,
+        "write_thumbnail": True,
+        "generate_nfo": True,
+    }
+    fake_run = Mock(
+        return_value=subprocess.CompletedProcess(args=[str(fake_bin)], returncode=0)
+    )
+    monkeypatch.setattr("ytdl_archiver.setup.ratatui_bridge.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "ytdl_archiver.setup.ratatui_bridge.tempfile.TemporaryDirectory",
+        _FakeTempDir.from_payload(temp_dir, payload),
+    )
+
+    run_ratatui_setup(SetupAnswers())
+
+    command = fake_run.call_args.args[0]
+    assert command[0] == str(fake_bin)
 
 
 def test_run_ratatui_setup_missing_result_file(monkeypatch, temp_dir):

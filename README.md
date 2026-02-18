@@ -14,7 +14,7 @@ Modern Python CLI for archiving YouTube playlists with media-server-friendly sid
 - Python 3.14+
 - [`uv`](https://docs.astral.sh/uv/)
 - FFmpeg available on PATH
-- Rust toolchain (`cargo`) for building the setup wizard in development
+- Rust toolchain (`cargo`) only if building the setup wizard binary from source
 
 ## Install
 ```bash
@@ -44,7 +44,8 @@ Keyboard controls:
 - `b`: back
 - `Esc` / `q`: cancel
 
-If the Rust setup binary is unavailable, setup falls back to prompt-based questions.
+Published wheels include prebuilt setup wizard binaries, so `init` works out of the box.
+If the setup binary is unavailable, setup falls back to prompt-based questions.
 If setup runs in a non-interactive environment (stdin/stdout not TTY), it uses defaults and reports that in the summary.
 
 You can also run setup explicitly:
@@ -52,9 +53,11 @@ You can also run setup explicitly:
 uv run ytdl-archiver init
 ```
 
-Build the Rust setup binary (required for ratatui setup mode):
+Build + stage the Rust setup binary (needed only when developing from source):
 ```bash
 cargo build --manifest-path rust/setup_tui/Cargo.toml --release
+python scripts/stage_setup_tui_binary.py
+uv build --wheel
 ```
 
 `cargo run` without setup files will fail by design. For manual wizard dev runs, pass both file arguments:
