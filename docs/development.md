@@ -17,6 +17,23 @@ uv run ruff format .
 uv run ty check .
 ```
 
+## Setup wizard (ratatui) development
+Build the setup wizard binary:
+```bash
+cargo build --manifest-path rust/setup_tui/Cargo.toml --release
+```
+
+The wizard binary requires file arguments. `cargo run` without args is expected to fail:
+```bash
+cargo run --manifest-path rust/setup_tui/Cargo.toml -- \
+  --defaults /tmp/defaults.json \
+  --result /tmp/result.json
+```
+
+UI behavior notes:
+- Normal terminal sizes render a centered one-page progressive form (visual 4:3 target).
+- Small terminals fall back to a paged step-by-step layout.
+
 ## Project structure
 ```text
 src/ytdl_archiver/

@@ -7,6 +7,8 @@ from click.testing import CliRunner
 
 from ytdl_archiver import __version__
 from ytdl_archiver.cli import cli
+from ytdl_archiver.setup.models import SetupAnswers, SetupRunResult, SetupWriteResult
+from ytdl_archiver.setup.runner import SetupCancelled
 
 
 class TestCLI:
@@ -288,6 +290,67 @@ base_directory = "/this/path/should/not/exist"
 
             assert result.exit_code == 0
             assert "first-run setup complete" in result.output
+
+    @patch("ytdl_archiver.cli.render_setup_summary")
+    @patch("ytdl_archiver.cli.run_setup")
+    @patch("ytdl_archiver.cli.Config")
+    def test_init_bypasses_group_config_bootstrap(
+        self,
+        mock_config,
+        mock_run_setup,
+        mock_render_setup_summary,
+    ):
+        """Test init command bypasses group config bootstrap and runs setup directly."""
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "cfg" / "config.toml"
+            mock_run_setup.return_value = SetupRunResult(
+                answers=SetupAnswers(),
+                write_result=SetupWriteResult(
+                    config_path=config_file,
+                    playlists_path=config_file.parent / "playlists.toml",
+                    archive_directory=Path(temp_dir) / "archive",
+                    created_config=True,
+                    created_playlists=True,
+                    created_archive_directory=True,
+                ),
+                ui_mode="ratatui",
+                ui_error=None,
+            )
+            mock_render_setup_summary.return_value = ["setup complete"]
+
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "init"],
+            )
+
+            assert result.exit_code == 0
+            assert "setup complete" in result.output
+            mock_config.assert_not_called()
+            mock_run_setup.assert_called_once_with(config_file)
+
+    @patch("ytdl_archiver.cli.run_setup", side_effect=SetupCancelled("Setup was cancelled"))
+    def test_init_cancel_exits_with_cancel_code(self, _mock_run_setup):
+        """Test cancelling init setup exits with user-cancel status."""
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "cfg" / "config.toml"
+            result = self.runner.invoke(cli, ["--config", str(config_file), "init"])
+
+            assert result.exit_code == 130
+            assert "Setup cancelled by user." in result.output
+
+    @patch("ytdl_archiver.cli.run_setup", side_effect=SetupCancelled("Setup was cancelled"))
+    def test_missing_config_cancel_exits_with_cancel_code(self, _mock_run_setup):
+        """Test cancelling auto first-run setup exits with user-cancel status."""
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "cfg" / "config.toml"
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "archive"],
+                env={"HOME": temp_dir},
+            )
+
+            assert result.exit_code == 130
+            assert "Setup cancelled by user." in result.output
 
     @patch("ytdl_archiver.cli.BrowserCookieRefresher")
     @patch("ytdl_archiver.cli.PlaylistArchiver")

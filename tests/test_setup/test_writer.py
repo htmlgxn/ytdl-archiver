@@ -1,7 +1,7 @@
 """Tests for first-run setup writer and runner."""
 
 from ytdl_archiver.setup.models import SetupAnswers
-from ytdl_archiver.setup.runner import render_setup_summary, run_setup
+from ytdl_archiver.setup.runner import SetupCancelled, render_setup_summary, run_setup
 from ytdl_archiver.setup.writer import write_setup_files
 
 
@@ -71,7 +71,67 @@ class TestSetupWriter:
         result = run_setup(temp_dir / "cfg" / "config.toml")
 
         summary = "\n".join(render_setup_summary(result))
+        assert "Interactive setup skipped" in summary
         assert "Edit config:" in summary
         assert "Add playlists:" in summary
         assert "uv run ytdl-archiver archive" in summary
         assert "uv run ytdl-archiver --help" in summary
+
+    def test_run_setup_interactive_prefers_ratatui(self, temp_dir, monkeypatch):
+        """Interactive setup uses ratatui answers when available."""
+        config_path = temp_dir / "cfg" / "config.toml"
+        answers = SetupAnswers(archive_directory=str(temp_dir / "archive"))
+        monkeypatch.setattr("ytdl_archiver.setup.runner.is_interactive_session", lambda: True)
+        monkeypatch.setattr(
+            "ytdl_archiver.setup.runner.run_ratatui_setup",
+            lambda _defaults: answers,
+        )
+
+        result = run_setup(config_path)
+
+        assert result.ui_mode == "ratatui"
+        assert result.ui_error is None
+        assert result.answers.archive_directory == str(temp_dir / "archive")
+        assert config_path.exists()
+
+    def test_run_setup_interactive_falls_back_to_prompt(self, temp_dir, monkeypatch):
+        """Interactive setup falls back to prompt collection on ratatui errors."""
+        config_path = temp_dir / "cfg" / "config.toml"
+        monkeypatch.setattr("ytdl_archiver.setup.runner.is_interactive_session", lambda: True)
+        monkeypatch.setattr(
+            "ytdl_archiver.setup.runner.run_ratatui_setup",
+            lambda _defaults: (_ for _ in ()).throw(RuntimeError("bridge failed")),
+        )
+        monkeypatch.setattr(
+            "ytdl_archiver.setup.runner.collect_prompt_answers",
+            lambda defaults: SetupAnswers(archive_directory=defaults.archive_directory),
+        )
+
+        result = run_setup(config_path)
+
+        assert result.ui_mode == "prompt"
+        assert result.ui_error is not None
+        assert "bridge failed" in result.ui_error
+
+    def test_run_setup_interactive_cancel_does_not_fallback(self, temp_dir, monkeypatch):
+        """Interactive cancel exits setup flow without prompt fallback."""
+        config_path = temp_dir / "cfg" / "config.toml"
+        monkeypatch.setattr("ytdl_archiver.setup.runner.is_interactive_session", lambda: True)
+        monkeypatch.setattr(
+            "ytdl_archiver.setup.runner.run_ratatui_setup",
+            lambda _defaults: None,
+        )
+        prompt_mock = []
+        monkeypatch.setattr(
+            "ytdl_archiver.setup.runner.collect_prompt_answers",
+            lambda _defaults: prompt_mock.append("called"),  # pragma: no cover
+        )
+
+        try:
+            run_setup(config_path)
+        except SetupCancelled:
+            pass
+        else:  # pragma: no cover - defensive test guard
+            raise AssertionError("Expected SetupCancelled")
+
+        assert prompt_mock == []

@@ -14,7 +14,7 @@ from .core.cookies import SUPPORTED_BROWSERS, BrowserCookieRefresher
 from .core.utils import setup_logging
 from .exceptions import ConfigurationError, CookieRefreshError
 from .output import detect_output_mode, emit_rendered, get_formatter, should_use_colors
-from .setup import render_setup_summary, run_setup
+from .setup import SetupCancelled, render_setup_summary, run_setup
 
 try:
     import structlog
@@ -65,9 +65,15 @@ def cli(
         config_path = config.expanduser() if config else Config.default_config_path()
         ctx.obj["config_path"] = config_path
 
+        if ctx.invoked_subcommand == "init":
+            return
+
         if not help_requested and not config_path.exists():
             try:
                 setup_result = run_setup(config_path)
+            except SetupCancelled:
+                click.echo("Setup cancelled by user.", err=True)
+                ctx.exit(130)
             except RuntimeError as e:
                 click.echo(f"Error initializing application: {e}", err=True)
                 ctx.exit(1)
@@ -268,6 +274,9 @@ def init_setup(ctx: click.Context) -> None:
         setup_result = run_setup(config_path)
         for line in render_setup_summary(setup_result):
             click.echo(line)
+    except SetupCancelled:
+        click.echo("Setup cancelled by user.", err=True)
+        sys.exit(130)
     except (OSError, RuntimeError, ValueError) as e:
         click.echo(f"Error running setup: {e}", err=True)
         sys.exit(1)
