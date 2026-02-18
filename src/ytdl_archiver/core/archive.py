@@ -4,6 +4,7 @@ import logging
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from ..exceptions import ArchiveError, ConfigurationError, DownloadError, MetadataError
 from ..output import emit_formatter_message, emit_rendered
@@ -39,9 +40,11 @@ class ArchiveTracker:
             if self.archive_file.exists():
                 with open(self.archive_file) as f:
                     lines = f.read().splitlines()
-                    self.downloaded_videos = set(
-                        line.strip() for line in lines if line.strip()
-                    )
+                    self.downloaded_videos = set()
+                    for line in lines:
+                        self.downloaded_videos.update(
+                            self._extract_video_id_candidates(line)
+                        )
                 logger.info("Loaded archive", video_count=len(self.downloaded_videos))
             else:
                 # Create empty archive file
@@ -51,6 +54,56 @@ class ArchiveTracker:
         except OSError as e:
             logger.error("Failed to load archive", error=str(e))
             raise ArchiveError(f"Failed to load archive: {e}") from e
+
+    @staticmethod
+    def _extract_video_id_from_url(raw: str) -> str:
+        """Extract a YouTube video id from common URL formats."""
+        parsed = urlparse(raw)
+        host = parsed.netloc.lower()
+        path = parsed.path.strip("/")
+
+        if "youtube.com" in host:
+            watch_id = parse_qs(parsed.query).get("v", [None])[0]
+            if watch_id:
+                return str(watch_id).strip()
+
+            if path.startswith("shorts/"):
+                parts = path.split("/", 1)
+                if len(parts) > 1 and parts[1]:
+                    return parts[1].strip()
+
+        if "youtu.be" in host and path:
+            return path.split("/", 1)[0].strip()
+
+        return ""
+
+    @classmethod
+    def _extract_video_id_candidates(cls, line: str) -> set[str]:
+        """Extract canonical id candidate from legacy/raw archive lines."""
+        raw = line.strip()
+        if not raw or raw.startswith("#"):
+            return set()
+
+        token_parts = raw.split()
+
+        # Prefer canonical id extraction from URL-form lines.
+        if "youtube.com/" in raw or "youtu.be/" in raw:
+            raw_url_id = cls._extract_video_id_from_url(raw)
+            if raw_url_id:
+                return {raw_url_id}
+
+            for token in token_parts:
+                token_id = cls._extract_video_id_from_url(token)
+                if token_id:
+                    return {token_id}
+
+        # Legacy lines like "youtube <id>" -> use last token.
+        if len(token_parts) > 1:
+            last_token = token_parts[-1].strip()
+            if last_token and not last_token.startswith("#"):
+                return {last_token}
+
+        return {raw}
 
     def is_downloaded(self, video_id: str) -> bool:
         """Check if video has been downloaded."""
@@ -190,6 +243,9 @@ class PlaylistArchiver:
         # Initialize archive tracker
         archive_file = output_directory / ".archive.txt"
         tracker = ArchiveTracker(archive_file)
+        archive_total = tracker.get_downloaded_count()
+        if self.formatter and archive_total > 0:
+            emit_rendered(self.formatter.already_downloaded(archive_total))
 
         # Track statistics
         stats = {"new": 0, "skipped": 0, "failed": 0}
@@ -205,13 +261,7 @@ class PlaylistArchiver:
             # Skip if already downloaded
             if tracker.is_downloaded(video_id):
                 stats["skipped"] += 1
-                if self.formatter:
-                    emit_rendered(
-                        self.formatter.warning(
-                            f"Already downloaded: {entry.get('title', 'Unknown')}"
-                        )
-                    )
-                else:
+                if not self.formatter:
                     logger.debug("Skipping already downloaded video", video_id=video_id)
                 continue
 

@@ -81,6 +81,16 @@ class BaseFormatter:
         """Get symbol if colors enabled."""
         return symbol if self.use_colors else ""
 
+    @staticmethod
+    def _status_label_width() -> int:
+        """Fixed width to align titles across status lines."""
+        return len("Thumbnail generated:")
+
+    def _status_label(self, text: str, color: str = Colors.GREEN) -> str:
+        """Build a padded, colorized status label."""
+        padded = f"{text:<{self._status_label_width()}}"
+        return self._colorize(padded, color)
+
     def header(self, version: str) -> str:
         """Print application header."""
         app_name = self._colorize("ytdl-archiver", Colors.RED)
@@ -114,7 +124,7 @@ class BaseFormatter:
         self, title: str, resolution: str = "", extension: str = "", size: str = ""
     ) -> str:
         """Print video completion message."""
-        complete = self._colorize("Downloaded:", Colors.GREEN)
+        complete = self._status_label("Downloaded:")
         parts = [complete, title]
 
         ext = self._normalize_extension(extension)
@@ -130,13 +140,42 @@ class BaseFormatter:
 
         return f"{Symbols.SUCCESS} {' '.join(parts)}"
 
-    def artifact_complete(self, title: str, extension: str = "") -> str:
+    def artifact_complete(
+        self, title: str, extension: str = "", artifact_type: str = ""
+    ) -> str:
         """Print sidecar artifact completion message."""
-        complete = self._colorize("Downloaded:", Colors.GREEN)
+        complete = self._status_label("Downloaded:")
         parts = [complete, title]
+        bracket_bits = []
+        if artifact_type:
+            bracket_bits.append(artifact_type)
+        ext = self._normalize_extension(extension)
+        if ext:
+            bracket_bits.append(ext)
+        if bracket_bits:
+            parts.append(f"[{', '.join(bracket_bits)}]")
+        return f"{Symbols.SUCCESS} {' '.join(parts)}"
+
+    def thumbnail_generated(self, title: str, extension: str = "") -> str:
+        """Print thumbnail generation message."""
+        label = self._status_label("Thumbnail generated:")
+        parts = [label, title]
         ext = self._normalize_extension(extension)
         if ext:
             parts.append(f"[{ext}]")
+        return f"{Symbols.SUCCESS} {' '.join(parts)}"
+
+    def mp4_generated(self, title: str, resolution: str = "", size: str = "") -> str:
+        """Print final mp4 generation message."""
+        label = self._status_label(".mp4 generated:")
+        parts = [label, title]
+        bracket_bits = []
+        if resolution:
+            bracket_bits.append(resolution)
+        if size:
+            bracket_bits.append(size)
+        if bracket_bits:
+            parts.append(f"[{', '.join(bracket_bits)}]")
         return f"{Symbols.SUCCESS} {' '.join(parts)}"
 
     def file_generated(self, file_type: str) -> str:
@@ -148,6 +187,11 @@ class BaseFormatter:
         """Print warning message."""
         warn = self._colorize("Warning:", Colors.YELLOW)
         return f"{Symbols.WARNING} {warn} {message}"
+
+    def already_downloaded(self, count: int) -> str:
+        """Print aggregated already-downloaded summary."""
+        label = self._colorize("Already downloaded:", Colors.YELLOW)
+        return f"{Symbols.WARNING} {label} {count} videos"
 
     def error(self, message: str) -> str:
         """Print error message."""
@@ -172,8 +216,6 @@ class BaseFormatter:
 
         if stats.get("new", 0) > 0:
             parts.append(f"{stats['new']} new")
-        if stats.get("skipped", 0) > 0:
-            parts.append(f"{stats['skipped']} skipped")
         if stats.get("failed", 0) > 0:
             parts.append(f"{stats['failed']} failed")
 
@@ -291,6 +333,11 @@ class QuietFormatter(BaseFormatter):
         warn = self._colorize("Warning:", Colors.YELLOW)
         return f"{self._symbolize(Symbols.WARNING)} {warn} {message}"
 
+    def already_downloaded(self, count: int) -> str:
+        """Print aggregated already-downloaded summary."""
+        label = self._colorize("Already downloaded:", Colors.YELLOW)
+        return f"{self._symbolize(Symbols.WARNING)} {label} {count} videos"
+
     def summary(self, stats: dict[str, int]) -> str:
         """Print final summary."""
         summary = self._colorize("Summary:", Colors.TEAL)
@@ -333,9 +380,21 @@ class QuietFormatter(BaseFormatter):
         _ = (title, resolution, extension, size)
         return ""
 
-    def artifact_complete(self, title: str, extension: str = "") -> str:
+    def artifact_complete(
+        self, title: str, extension: str = "", artifact_type: str = ""
+    ) -> str:
         """Print artifact completion (quiet mode - minimal)."""
+        _ = (title, extension, artifact_type)
+        return ""
+
+    def thumbnail_generated(self, title: str, extension: str = "") -> str:
+        """Print thumbnail generation (quiet mode - minimal)."""
         _ = (title, extension)
+        return ""
+
+    def mp4_generated(self, title: str, resolution: str = "", size: str = "") -> str:
+        """Print mp4 generation (quiet mode - minimal)."""
+        _ = (title, resolution, size)
         return ""
 
     def file_generated(self, file_type: str) -> str:
@@ -428,19 +487,21 @@ def emit_formatter_message(formatter: Any, level: str, message: str) -> None:
     """Render and print a formatter message if available."""
     rendered = render_formatter_message(formatter, level, message)
     if rendered:
-        if tqdm is not None:
-            tqdm.write(rendered)
-        else:
-            print(rendered)
+        for line in str(rendered).splitlines():
+            if tqdm is not None:
+                tqdm.write(line)
+            else:
+                print(line)
 
 
 def emit_rendered(message: str) -> None:
     """Print a pre-rendered message when non-empty."""
     if message:
-        if tqdm is not None:
-            tqdm.write(message)
-        else:
-            print(message)
+        for line in str(message).splitlines():
+            if tqdm is not None:
+                tqdm.write(line)
+            else:
+                print(line)
 
 
 def get_formatter(
