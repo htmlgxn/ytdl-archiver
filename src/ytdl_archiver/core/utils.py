@@ -3,7 +3,9 @@
 import json
 import logging
 import logging.handlers
+import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -139,3 +141,18 @@ def is_short(metadata: dict[str, Any], aspect_ratio_threshold: float = 0.7) -> b
         aspect_ratio = width / height
         return aspect_ratio < aspect_ratio_threshold
     return False
+
+
+@contextmanager
+def suppress_output():
+    """Context manager to suppress stdout and stderr."""
+    with open(os.devnull, "w") as devnull:
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        try:
+            sys.stdout = devnull
+            sys.stderr = devnull
+            yield
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr

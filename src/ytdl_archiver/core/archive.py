@@ -1,34 +1,17 @@
 """Archive tracking for downloaded videos."""
 
 import logging
-import os
-import sys
 import time
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 from ..exceptions import ArchiveError
+from ..output import emit_formatter_message, emit_rendered
 
 # Suppress yt-dlp's own logger to prevent unwanted output
 yt_dlp_logger = logging.getLogger("yt_dlp")
 yt_dlp_logger.setLevel(logging.CRITICAL)
 yt_dlp_logger.addHandler(logging.NullHandler())
-
-
-@contextmanager
-def suppress_output():
-    """Context manager to suppress stdout and stderr."""
-    with open(os.devnull, "w") as devnull:
-        old_stdout = sys.stdout
-        old_stderr = sys.stderr
-        try:
-            sys.stdout = devnull
-            sys.stderr = devnull
-            yield
-        finally:
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
 
 
 try:
@@ -112,14 +95,7 @@ class PlaylistArchiver:
 
     def _emit_formatter_message(self, level: str, message: str) -> None:
         """Print formatter messages consistently."""
-        if not self.formatter:
-            return
-        formatter_fn = getattr(self.formatter, level, None)
-        if formatter_fn is None:
-            return
-        rendered = formatter_fn(message)
-        if rendered:
-            print(rendered)
+        emit_formatter_message(self.formatter, level, message)
 
     def process_playlist(self, playlist_id: str, playlist_path: str) -> None:
         """Process a single playlist."""
@@ -135,11 +111,11 @@ class PlaylistArchiver:
             if self.formatter:
                 self._emit_formatter_message(
                     "error",
-                    f"Failed to get playlist info for {playlist_path} (ID: {playlist_id})"
+                    f"Failed to get playlist info for {playlist_path} (ID: {playlist_id})",
                 )
                 self._emit_formatter_message(
                     "error",
-                    "Please check that the playlist ID is correct and the playlist is public"
+                    "Please check that the playlist ID is correct and the playlist is public",
                 )
             else:
                 logger.error(
@@ -154,11 +130,11 @@ class PlaylistArchiver:
             playlist_msg = self.formatter.playlist_start(
                 f"Processing: {playlist_path}", len(playlist_info.get("entries", []))
             )
-            print(playlist_msg)
+            emit_rendered(playlist_msg)
 
             cookie_path = self.config.get_cookie_file_path()
             if cookie_path and not playlist_info.get("entries"):
-                print(
+                emit_rendered(
                     self.formatter.warning(
                         "Playlist is empty but cookies.txt exists - "
                         "you may need to re-authenticate your cookies"
@@ -184,7 +160,7 @@ class PlaylistArchiver:
             if tracker.is_downloaded(video_id):
                 stats["skipped"] += 1
                 if self.formatter:
-                    print(
+                    emit_rendered(
                         self.formatter.warning(
                             f"Already downloaded: {entry.get('title', 'Unknown')}"
                         )
@@ -220,13 +196,15 @@ class PlaylistArchiver:
                             resolution = f"{metadata.get('height')}p"
 
                         # Show completion messages
-                        print(self.formatter.video_complete(title, resolution))
-                        print(self.formatter.file_generated("NFO metadata"))
-                        print(self.formatter.file_generated("Thumbnail image"))
+                        emit_rendered(self.formatter.video_complete(title, resolution))
+                        emit_rendered(self.formatter.file_generated("NFO metadata"))
+                        emit_rendered(self.formatter.file_generated("Thumbnail image"))
 
                         # Only show subtitle message if subtitles were actually downloaded
                         if metadata.get("subtitles"):
-                            print(self.formatter.file_generated("Subtitle file"))
+                            emit_rendered(
+                                self.formatter.file_generated("Subtitle file")
+                            )
                     else:
                         logger.info(
                             "Successfully processed video",
@@ -237,7 +215,7 @@ class PlaylistArchiver:
             except Exception as e:
                 stats["failed"] += 1
                 if self.formatter:
-                    print(
+                    emit_rendered(
                         self.formatter.error(
                             f"Failed to download {entry.get('title', 'Unknown')} - {e!s}"
                         )
@@ -249,7 +227,7 @@ class PlaylistArchiver:
                 continue
 
         if self.formatter:
-            print(self.formatter.playlist_summary(stats))
+            emit_rendered(self.formatter.playlist_summary(stats))
         else:
             logger.info(
                 "Finished processing playlist",
@@ -339,13 +317,17 @@ class PlaylistArchiver:
             playlists = self.config.load_playlists()
         except Exception as e:
             if self.formatter:
-                self._emit_formatter_message("error", f"Failed to load playlists - {e!s}")
+                self._emit_formatter_message(
+                    "error", f"Failed to load playlists - {e!s}"
+                )
             else:
                 logger.error("Failed to load playlists", error=str(e))
             raise ArchiveError(f"Failed to load playlists: {e}")
 
         if self.formatter:
-            self.formatter.playlist_start("All Playlists", len(playlists))
+            emit_rendered(
+                self.formatter.playlist_start("All Playlists", len(playlists))
+            )
 
         # Process each playlist
         for i, playlist in enumerate(playlists):
@@ -354,7 +336,9 @@ class PlaylistArchiver:
 
             if not playlist_id or not playlist_path:
                 if self.formatter:
-                    self._emit_formatter_message("warning", "Invalid playlist entry - skipping")
+                    self._emit_formatter_message(
+                        "warning", "Invalid playlist entry - skipping"
+                    )
                 else:
                     logger.warning("Invalid playlist entry", playlist=playlist)
                 continue

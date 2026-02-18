@@ -26,11 +26,11 @@ def temp_config_dir(temp_dir: Path) -> Path:
 
 
 @pytest.fixture
-def sample_config() -> dict[str, Any]:
+def sample_config(temp_dir: Path) -> dict[str, Any]:
     """Sample configuration dictionary for testing."""
     return {
         "archive": {
-            "base_directory": "~/Videos/YouTube",
+            "base_directory": str(temp_dir / "Videos" / "YouTube"),
             "delay_between_videos": 1,
             "delay_between_playlists": 5,
             "max_retries": 2,

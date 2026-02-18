@@ -1,10 +1,7 @@
 """YouTube video downloader with retry logic."""
 
 import logging
-import os
-import sys
 import time
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -20,7 +17,15 @@ from tenacity import (
 
 from ..config.settings import Config
 from ..exceptions import DownloadError
-from .utils import is_short, sanitize_filename
+from ..output import emit_formatter_message
+from .utils import (
+    is_short,
+    sanitize_filename,
+    suppress_output as shared_suppress_output,
+)
+
+# Backward-compatible export for existing imports/tests.
+suppress_output = shared_suppress_output
 
 try:
     import structlog
@@ -44,21 +49,6 @@ for logger_name in [
     logger = logging.getLogger(logger_name)
     logger.setLevel(logging.CRITICAL)
     logger.addHandler(logging.NullHandler())
-
-
-@contextmanager
-def suppress_output():
-    """Context manager to suppress stdout and stderr."""
-    with open(os.devnull, "w") as devnull:
-        old_stdout = sys.stdout
-        old_stderr = sys.stderr
-        try:
-            sys.stdout = devnull
-            sys.stderr = devnull
-            yield
-        finally:
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
 
 
 class ProgressCallback:
@@ -259,33 +249,44 @@ class YouTubeDownloader:
 
         return "unknown-video"
 
-    def _build_output_filename(self, metadata: dict[str, Any] | None, video_url: str) -> str:
+    def _build_output_filename(
+        self, metadata: dict[str, Any] | None, video_url: str
+    ) -> str:
         """Build a deterministic output filename."""
         video_id = self._extract_video_id(video_url)
         fallback_title = f"video-{video_id}"
 
         title = metadata.get("title", fallback_title) if metadata else fallback_title
-        channel = metadata.get("uploader", "unknown-channel") if metadata else "unknown-channel"
+        channel = (
+            metadata.get("uploader", "unknown-channel")
+            if metadata
+            else "unknown-channel"
+        )
 
         safe_title = sanitize_filename(title) or fallback_title
         safe_channel = sanitize_filename(channel) or "unknown-channel"
         return f"{safe_title}_{safe_channel}"
 
-    def _emit_formatter_error(self, message: str) -> None:
-        """Print formatter-generated errors consistently."""
-        if not self.formatter:
-            return
-        rendered = self.formatter.error(message)
-        if rendered:
-            print(rendered)
-
-    def _emit_formatter_warning(self, message: str) -> None:
-        """Print formatter-generated warnings consistently."""
-        if not self.formatter:
-            return
-        rendered = self.formatter.warning(message)
-        if rendered:
-            print(rendered)
+    def _download_with_opts(
+        self, video_url: str, opts: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Execute yt-dlp with prepared options."""
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                return ydl.extract_info(video_url, download=True)
+        except yt_dlp.DownloadError as e:
+            logger.error("Download failed", video_url=video_url, error=str(e))
+            raise DownloadError(f"Failed to download {video_url}: {e}")
+        except Exception as e:
+            emit_formatter_message(
+                self.formatter, "error", f"Unexpected error downloading video - {e!s}"
+            )
+            logger.error(
+                "Unexpected error during download",
+                video_url=video_url,
+                error=str(e),
+            )
+            raise DownloadError(f"Unexpected error downloading {video_url}: {e}")
 
     def _download_with_effective_config(
         self,
@@ -300,7 +301,9 @@ class YouTubeDownloader:
             return self.download_video_with_config_impl(
                 video_url, output_template, output_directory, filename, playlist_config
             )
-        return self.download_video(video_url, output_template, output_directory, filename)
+        return self.download_video(
+            video_url, output_template, output_directory, filename
+        )
 
     @retry(
         stop=stop_after_attempt(3),
@@ -323,24 +326,7 @@ class YouTubeDownloader:
             "subtitle": str(output_directory / f"{filename}.%(subtitle_lang)s.%(ext)s"),
             "thumbnail": str(output_directory / f"{filename}.%(ext)s"),
         }
-
-        try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info_dict = ydl.extract_info(video_url, download=True)
-                return info_dict
-        except yt_dlp.DownloadError as e:
-            logger.error("Download failed", video_url=video_url, error=str(e))
-            raise DownloadError(f"Failed to download {video_url}: {e}")
-        except Exception as e:
-            if self.formatter:
-                self._emit_formatter_error(f"Unexpected error downloading video - {e!s}")
-            else:
-                logger.error(
-                    "Unexpected error during download",
-                    video_url=video_url,
-                    error=str(e),
-                )
-            raise DownloadError(f"Unexpected error downloading {video_url}: {e}")
+        return self._download_with_opts(video_url, opts)
 
     def get_metadata(self, video_url: str) -> dict[str, Any] | None:
         """Get video metadata without downloading."""
@@ -358,7 +344,9 @@ class YouTubeDownloader:
                 return info_dict
         except Exception as e:
             if self.formatter:
-                self._emit_formatter_error(f"Failed to get metadata - {e!s}")
+                emit_formatter_message(
+                    self.formatter, "error", f"Failed to get metadata - {e!s}"
+                )
             else:
                 logger.error(
                     "Failed to get metadata", video_url=video_url, error=str(e)
@@ -374,8 +362,10 @@ class YouTubeDownloader:
         """Download video and handle directory structure based on metadata."""
         metadata = self.get_metadata(video_url)
         if metadata is None:
-            self._emit_formatter_warning(
-                "Metadata prefetch failed. Falling back to direct download."
+            emit_formatter_message(
+                self.formatter,
+                "warning",
+                "Metadata prefetch failed. Falling back to direct download.",
             )
 
         filename = self._build_output_filename(metadata, video_url)
@@ -423,18 +413,4 @@ class YouTubeDownloader:
             "subtitle": str(output_directory / f"{filename}.%(subtitle_lang)s.%(ext)s"),
             "thumbnail": str(output_directory / f"{filename}.%(ext)s"),
         }
-
-        try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info_dict = ydl.extract_info(video_url, download=True)
-                return info_dict
-        except yt_dlp.DownloadError as e:
-            logger.error("Download failed", video_url=video_url, error=str(e))
-            raise DownloadError(f"Failed to download {video_url}: {e}")
-        except Exception as e:
-            if self.formatter:
-                self._emit_formatter_error(f"Unexpected error downloading video - {e!s}")
-            logger.error(
-                "Unexpected error during download", video_url=video_url, error=str(e)
-            )
-            raise DownloadError(f"Unexpected error downloading {video_url}: {e}")
+        return self._download_with_opts(video_url, opts)

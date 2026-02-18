@@ -132,6 +132,20 @@ class Config:
         """Set an explicit playlists file override."""
         self._config["playlists_file"] = str(playlists_file.expanduser())
 
+    def set_archive_directory(self, directory: Path | str) -> None:
+        """Set the archive base directory."""
+        archive_config = self._config.setdefault("archive", {})
+        archive_config["base_directory"] = str(Path(directory).expanduser())
+
+    def set_logging_level(self, level: str) -> None:
+        """Set the logging level."""
+        logging_config = self._config.setdefault("logging", {})
+        logging_config["level"] = level.upper()
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the full merged configuration dictionary."""
+        return self._config
+
     def ensure_playlists_file(self) -> None:
         """Create a skeleton playlists.toml file if it doesn't exist."""
         playlists_file = self.get_playlists_file()
@@ -191,7 +205,9 @@ path = "My Playlist"
         playlists = self.load_playlists()
 
         # Find the playlist; prefer exact (id, path) match when path is available.
-        matches = [playlist for playlist in playlists if playlist.get("id") == playlist_id]
+        matches = [
+            playlist for playlist in playlists if playlist.get("id") == playlist_id
+        ]
         if not matches:
             return {}
 
