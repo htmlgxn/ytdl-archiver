@@ -31,8 +31,9 @@ cargo run --manifest-path rust/setup_tui/Cargo.toml -- \
 ```
 
 UI behavior notes:
-- Normal terminal sizes render a centered one-page progressive form (visual 4:3 target).
+- Normal terminal sizes render a centered one-page progressive form (visual 4:3 target) with instructional section titles and dimmed inactive sections.
 - Small terminals fall back to a paged step-by-step layout.
+- Setup defaults prefer browser cookie import with Firefox preselected.
 
 ## Project structure
 ```text

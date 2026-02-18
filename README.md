@@ -35,10 +35,11 @@ If `config.toml` is missing, setup runs automatically on any non-help invocation
 - `~/.config/ytdl-archiver/playlists.toml`
 
 Interactive setup uses a Rust `ratatui` wizard with a centered one-page progressive form.
-Inactive sections stay visible in dim mode and light up as you advance.
+Section titles include inline guidance, inactive sections stay visible in dim mode, and selectors use compact diamond markers.
 On small terminals, setup automatically falls back to paged step-by-step rendering.
+Setup defaults to browser cookie refresh with Firefox selected as the recommended baseline.
 Keyboard controls:
-- `j/k` or arrow keys: move
+- `arrow keys` or `j/k`: move
 - `Enter`: confirm / next
 - `b`: back
 - `Esc` / `q`: cancel

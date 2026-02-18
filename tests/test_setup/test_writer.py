@@ -63,7 +63,7 @@ class TestSetupWriter:
         assert config_path.exists()
         content = config_path.read_text()
         assert 'base_directory = "~/Videos/media/youtube/"' in content
-        assert 'source = "manual_file"' in content
+        assert 'source = "browser"' in content
 
     def test_setup_summary_includes_next_steps(self, temp_dir, monkeypatch):
         """Test setup summary includes required command guidance."""
