@@ -34,9 +34,10 @@ If `~/.config/ytdl-archiver/config.toml` is missing, setup runs automatically on
 Published wheels bundle prebuilt setup UI binaries for:
 - `linux-x86_64`
 - `linux-aarch64`
-- `macos-x86_64`
 - `macos-aarch64`
 - `windows-x86_64`
+
+Note: Intel macOS (`macos-x86_64`) is temporarily excluded from bundled release artifacts due to current CI runner constraints.
 
 Source installs keep the existing fallback behavior:
 - With Rust installed, setup can auto-build the UI binary.

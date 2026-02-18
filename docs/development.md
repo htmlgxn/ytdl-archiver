@@ -65,6 +65,10 @@ Release CI is defined in `.github/workflows/release.yml` and does:
 4. Verify wheel contents include all expected setup binaries.
 5. Publish to PyPI on `v*` tags (Trusted Publishing).
 
+Current constraint:
+- `macos-x86_64` is temporarily excluded because the available GitHub-hosted runner configuration for Intel macOS is not currently supported in this repository/org environment.
+- TODO: re-enable `macos-x86_64` once runner support is restored or a self-hosted Intel macOS runner is available.
+
 UI behavior notes:
 - Normal terminal sizes render a centered one-page progressive form.
 - Small terminals fall back to paged step-by-step rendering.
