@@ -26,6 +26,13 @@ src/ytdl_archiver/
 ├── config/
 │   ├── defaults.toml
 │   └── settings.py
+├── setup/
+│   ├── models.py
+│   ├── templates.py
+│   ├── writer.py
+│   ├── fallback_prompts.py
+│   ├── textual_app.py
+│   └── runner.py
 └── core/
     ├── archive.py
     ├── cookies.py

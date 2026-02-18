@@ -24,13 +24,19 @@ uv sync
 
 ## Quick Start
 
-### 1. Initialize config
+### 1. Run first-time setup
 ```bash
-uv run ytdl-archiver init-config
+uv run ytdl-archiver archive
 ```
 
-Default config path:
+If `config.toml` is missing, setup runs automatically on any non-help invocation and generates:
 - `~/.config/ytdl-archiver/config.toml`
+- `~/.config/ytdl-archiver/playlists.toml`
+
+You can also run setup explicitly:
+```bash
+uv run ytdl-archiver init
+```
 
 ### 2. Define playlists
 Create `~/.config/ytdl-archiver/playlists.toml` (or pass `-p/--playlists` at runtime).
@@ -119,9 +125,9 @@ uv run ytdl-archiver -v archive
 uv run ytdl-archiver convert-playlists -i playlists.json -o playlists.toml
 ```
 
-### `init-config`
+### `init`
 ```bash
-uv run ytdl-archiver init-config -o /path/to/config.toml
+uv run ytdl-archiver -c /path/to/config.toml init
 ```
 
 ## Configuration Reference
@@ -174,10 +180,20 @@ request_timeout = 30
 connect_timeout = 10
 cookie_file = "~/cookies.txt"
 
+[cookies]
+source = "manual_file"
+browser = "firefox"
+profile = ""
+refresh_on_startup = true
+
 [media_server]
 generate_nfo = true
 nfo_format = "kodi"
 ```
+
+Cookie behavior:
+- Set `cookies.source = "browser"` to refresh cookies automatically before `archive` runs.
+- CLI flags (`--cookies-browser`, `--cookies-profile`) override config values for that run.
 
 ## Systemd Service (optional)
 See `optional/ytdl-archiver.service`.

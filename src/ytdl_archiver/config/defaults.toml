@@ -34,6 +34,12 @@ request_timeout = 30
 connect_timeout = 10
 cookie_file = "~/cookies.txt"
 
+[cookies]
+source = "manual_file"
+browser = "firefox"
+profile = ""
+refresh_on_startup = true
+
 [media_server]
 generate_nfo = true
 nfo_format = "kodi"

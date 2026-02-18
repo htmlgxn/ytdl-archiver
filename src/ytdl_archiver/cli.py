@@ -11,9 +11,10 @@ from . import __version__
 from .config.settings import Config
 from .core.archive import PlaylistArchiver
 from .core.cookies import SUPPORTED_BROWSERS, BrowserCookieRefresher
-from .exceptions import ConfigurationError, CookieRefreshError
 from .core.utils import setup_logging
+from .exceptions import ConfigurationError, CookieRefreshError
 from .output import detect_output_mode, emit_rendered, get_formatter, should_use_colors
+from .setup import render_setup_summary, run_setup
 
 try:
     import structlog
@@ -25,11 +26,11 @@ except ImportError:
     logger = logging.getLogger(__name__)
 
 
-@click.group()
+@click.group(invoke_without_command=True)
 @click.option(
     "--config",
     "-c",
-    type=click.Path(exists=True, path_type=Path),
+    type=click.Path(path_type=Path),
     help="Path to configuration file",
 )
 @click.option(
@@ -60,13 +61,26 @@ def cli(
     """YTDL-Archiver: Modern YouTube playlist archiver."""
     try:
         ctx.ensure_object(dict)
+        help_requested = _is_help_invocation(ctx)
+        config_path = config.expanduser() if config else Config.default_config_path()
+        ctx.obj["config_path"] = config_path
+
+        if not help_requested and not config_path.exists():
+            try:
+                setup_result = run_setup(config_path)
+            except RuntimeError as e:
+                click.echo(f"Error initializing application: {e}", err=True)
+                ctx.exit(1)
+            for line in render_setup_summary(setup_result):
+                click.echo(line)
+            ctx.exit(0)
 
         # Detect output mode and colors
         output_mode = detect_output_mode(verbose, quiet)
         use_colors = should_use_colors(no_color)
 
         # Store formatter and settings in context
-        ctx.obj["config"] = Config(config)
+        ctx.obj["config"] = Config(config_path)
         migrated_playlists = ctx.obj["config"].migrate_playlists_from_cwd()
         ctx.obj["output_mode"] = output_mode
         ctx.obj["use_colors"] = use_colors
@@ -85,6 +99,8 @@ def cli(
         logger.info("YTDL-Archiver started", version=__version__)
         if migrated_playlists:
             logger.info("Migrated playlists file", path=str(migrated_playlists))
+        if ctx.invoked_subcommand is None and not help_requested:
+            ctx.fail("Missing command.")
 
     except ConfigurationError as e:
         click.echo(f"Error initializing application: {e}", err=True)
@@ -151,6 +167,14 @@ def archive(
         cookie_refresher = None
         skip_initial_cookie_refresh = False
         normalized_browser = cookies_browser.lower() if cookies_browser else None
+        effective_cookie_profile = cookies_profile
+
+        if not normalized_browser:
+            normalized_browser, configured_profile = _resolve_config_cookie_refresh(
+                config,
+                profile_override=cookies_profile,
+            )
+            effective_cookie_profile = configured_profile
 
         if normalized_browser:
             cookie_refresher = BrowserCookieRefresher()
@@ -158,7 +182,7 @@ def archive(
             try:
                 cookie_refresher.refresh_to_file(
                     normalized_browser,
-                    cookies_profile,
+                    effective_cookie_profile,
                     cookie_target,
                 )
                 skip_initial_cookie_refresh = True
@@ -175,7 +199,7 @@ def archive(
             formatter,
             cookie_refresher=cookie_refresher,
             cookie_browser=normalized_browser,
-            cookie_profile=cookies_profile,
+            cookie_profile=effective_cookie_profile,
             skip_initial_cookie_refresh=skip_initial_cookie_refresh,
         )
         archiver.run()  # Will now safely load playlists from config directory
@@ -235,35 +259,54 @@ def convert_playlists(input: Path, output: Path | None) -> None:
         sys.exit(1)
 
 
-@cli.command()
-@click.option(
-    "--output",
-    "-o",
-    type=click.Path(path_type=Path),
-    help="Output path for configuration file",
-)
-def init_config(output: Path | None) -> None:
-    """Initialize configuration file."""
-    if output is None:
-        output = Path.home() / ".config" / "ytdl-archiver" / "config.toml"
-
-    output.parent.mkdir(parents=True, exist_ok=True)
-
-    defaults_path = Path(__file__).parent / "config" / "defaults.toml"
-
+@cli.command(name="init")
+@click.pass_context
+def init_setup(ctx: click.Context) -> None:
+    """Run interactive setup and generate first-run template files."""
     try:
-        with defaults_path.open() as f:
-            default_config = toml.load(f)
-
-        with output.open("w") as f:
-            toml.dump(default_config, f)
-
-        click.echo(f"Configuration file created at: {output}")
-        click.echo("Edit this file to customize your archiver settings.")
-
-    except (OSError, toml.TomlDecodeError, ValueError) as e:
-        click.echo(f"Error creating configuration file: {e}", err=True)
+        config_path = Path(ctx.obj.get("config_path", Config.default_config_path()))
+        setup_result = run_setup(config_path)
+        for line in render_setup_summary(setup_result):
+            click.echo(line)
+    except (OSError, RuntimeError, ValueError) as e:
+        click.echo(f"Error running setup: {e}", err=True)
         sys.exit(1)
+
+
+def _is_help_invocation(ctx: click.Context) -> bool:
+    """Return True when invocation appears to be a help request."""
+    help_flags = set(ctx.help_option_names)
+    help_flags.add("-h")
+
+    argv_tokens = list(sys.argv[1:])
+    if any(token in help_flags for token in argv_tokens):
+        return True
+
+    parsed_tokens = list(ctx.args)
+    return any(token in help_flags for token in parsed_tokens)
+
+
+def _resolve_config_cookie_refresh(
+    config: Config,
+    profile_override: str | None,
+) -> tuple[str | None, str | None]:
+    """Resolve cookie refresh settings from config when CLI flag is absent."""
+    cookie_source = str(config.get("cookies.source", "manual_file")).lower()
+    refresh_on_startup = bool(config.get("cookies.refresh_on_startup", True))
+    if cookie_source != "browser" or not refresh_on_startup:
+        return None, None
+
+    browser = config.get("cookies.browser")
+    if not browser:
+        return None, None
+
+    profile = profile_override
+    if profile is None:
+        configured_profile = config.get("cookies.profile")
+        if configured_profile:
+            profile = str(configured_profile)
+
+    return str(browser).lower(), profile
 
 
 def main() -> None:

@@ -41,8 +41,13 @@ uv sync --dev
 
 ### Step 2: Initialize config
 ```bash
-uv run ytdl-archiver init-config
+uv run ytdl-archiver init
 ```
+You can also trigger first-run setup by running:
+```bash
+uv run ytdl-archiver archive
+```
+when `~/.config/ytdl-archiver/config.toml` does not exist.
 
 ### Step 3: Move/convert playlists
 Option A (recommended): convert legacy JSON to TOML.
@@ -78,7 +83,7 @@ uv run ytdl-archiver --help
 Commands:
 - `archive`
 - `convert-playlists`
-- `init-config`
+- `init`
 
 Global options:
 - `-c, --config PATH`

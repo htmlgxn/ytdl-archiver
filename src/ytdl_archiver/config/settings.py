@@ -17,7 +17,7 @@ class Config:
     """Configuration manager for ytdl-archiver."""
 
     def __init__(self, config_path: Path | None = None):
-        self.config_path = config_path or self._get_default_config_path()
+        self.config_path = config_path or self.default_config_path()
         self._config: dict[str, Any] = {}
 
         self.load()
@@ -59,7 +59,8 @@ class Config:
             return destination
         return None
 
-    def _get_default_config_path(self) -> Path:
+    @staticmethod
+    def default_config_path() -> Path:
         """Get default configuration file path."""
         return Path.home() / ".config" / "ytdl-archiver" / "config.toml"
 
@@ -282,5 +283,34 @@ path = "My Playlist"
         download_format = self.get("download.format")
         if not download_format:
             raise ConfigurationError("Download format cannot be empty")
+
+        # Validate cookie refresh settings
+        cookie_source = str(self.get("cookies.source", "manual_file")).lower()
+        valid_sources = {"manual_file", "browser"}
+        if cookie_source not in valid_sources:
+            raise ConfigurationError(
+                f"Invalid cookies.source: {cookie_source}. Valid values: {sorted(valid_sources)}"
+            )
+
+        refresh_on_startup = self.get("cookies.refresh_on_startup", True)
+        if not isinstance(refresh_on_startup, bool):
+            raise ConfigurationError(
+                "Invalid cookies.refresh_on_startup value; expected true or false"
+            )
+
+        if cookie_source == "browser":
+            from ..core.cookies import SUPPORTED_BROWSERS
+
+            browser = self.get("cookies.browser")
+            if not browser:
+                raise ConfigurationError(
+                    "cookies.browser is required when cookies.source is 'browser'"
+                )
+            browser_value = str(browser).lower()
+            if browser_value not in SUPPORTED_BROWSERS:
+                raise ConfigurationError(
+                    f"Invalid cookies.browser: {browser_value}. "
+                    f"Valid values: {list(SUPPORTED_BROWSERS)}"
+                )
 
         logger.info("Configuration validated successfully")
