@@ -19,7 +19,7 @@ Modern Python CLI for archiving YouTube playlists with media-server-friendly sid
 ```bash
 git clone https://github.com/htmlgxn/ytdl-archiver.git
 cd ytdl-archiver
-uv sync --dev
+uv sync
 ```
 
 ## Quick Start
