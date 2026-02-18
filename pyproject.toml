@@ -4,7 +4,6 @@ version = "0.2.0"
 description = "Modern Python CLI for archiving YouTube playlists with media-server metadata support"
 readme = "README.md"
 requires-python = ">=3.14"
-license = {text = "Unlicense"}
 authors = [
     {name = "Ben Chitty", email = "htmlgxn@pm.me"},
 ]
@@ -18,6 +17,9 @@ classifiers = [
     "Topic :: Utilities",
     "Environment :: Console",
 ]
+license = "Unlicense"
+license-files = ["LICEN[CS]E*"]
+
 dependencies = [
     # Core runtime
     "yt-dlp>=2026.2.4",
@@ -39,6 +41,7 @@ dev = [
     "pytest-cov>=6.0.0,<7.0.0",
     "pytest-mock>=3.14.0,<4.0.0",
     "pre-commit>=4.0.0,<5.0.0",
+    "twine>=6.2.0",
 ]
 
 [project.scripts]
