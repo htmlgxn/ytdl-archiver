@@ -171,25 +171,27 @@ if ! command -v uv >/dev/null 2>&1; then
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
-if ask_yes_no "Install Deno? (recommended for best yt-dlp compatibility)" 1; then
-  if ! command -v deno >/dev/null 2>&1; then
-    echo "deno not found. Installing deno..."
-    curl -fsSL https://deno.land/install.sh | sh
-    export PATH="$HOME/.deno/bin:$PATH"
-  else
-    echo "Good! Deno is already installed!"
-  fi
+if command -v deno >/dev/null 2>&1; then
+  echo "Good! Deno is already installed!"
+elif ask_yes_no "Install Deno? (recommended for best yt-dlp compatibility)" 1; then
+  echo "deno not found. Installing deno..."
+  curl -fsSL https://deno.land/install.sh | sh
+  export PATH="$HOME/.deno/bin:$PATH"
 else
   echo "Skipping Deno install."
 fi
 
-if ask_yes_no "Install Firefox? (recommended for cookie import)" 1; then
+if is_firefox_installed; then
+  echo "Good! Firefox is already installed!"
+elif ask_yes_no "Install Firefox? (recommended for cookie import)" 1; then
   install_firefox
 else
   echo "Skipping Firefox install."
 fi
 
-if ask_yes_no "Install FFmpeg? (recommended)" 1; then
+if is_ffmpeg_installed; then
+  echo "Good! FFmpeg is already installed!"
+elif ask_yes_no "Install FFmpeg? (recommended)" 1; then
   install_ffmpeg
 else
   echo "Skipping FFmpeg install."
