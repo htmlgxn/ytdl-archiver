@@ -68,6 +68,8 @@ Release CI is defined in `.github/workflows/release.yml` and does:
 Current constraint:
 - `macos-x86_64` is temporarily excluded because the available GitHub-hosted runner configuration for Intel macOS is not currently supported in this repository/org environment.
 - TODO: re-enable `macos-x86_64` once runner support is restored or a self-hosted Intel macOS runner is available.
+- Release workflow checkout uses `persist-credentials: false` intentionally to avoid leaking GitHub auth headers into downstream Cargo Git/index operations.
+- Release workflow forces `CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse` to avoid interactive Git auth prompts when resolving crates.
 
 UI behavior notes:
 - Normal terminal sizes render a centered one-page progressive form.
