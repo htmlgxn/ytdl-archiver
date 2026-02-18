@@ -20,31 +20,44 @@ class Config:
         self.config_path = config_path or self._get_default_config_path()
         self._config: dict[str, Any] = {}
 
-        # Migration: Move playlists file from CWD to config dir if found
+        self.load()
+
+    def migrate_playlists_from_cwd(self) -> Path | None:
+        """Migrate legacy playlists file from CWD into config directory.
+
+        Migration runs only when a config-dir playlists TOML file does not already exist.
+        Returns the destination path when a move occurred, else None.
+        """
         cwd_toml = Path("playlists.toml")
         cwd_json = Path("playlists.json")
         config_dir = self.config_path.parent
+        config_toml = config_dir / "playlists.toml"
 
-        if (cwd_toml.exists() or cwd_json.exists()) and not (
-            config_dir / "playlists.toml"
-        ).exists():
-            config_dir.mkdir(parents=True, exist_ok=True)
-            if cwd_toml.exists():
-                shutil.move(str(cwd_toml), str(config_dir / "playlists.toml"))
-                logger.info(
-                    "Migrated playlists.toml to config directory",
-                    from_path=str(cwd_toml),
-                    to_path=str(config_dir / "playlists.toml"),
-                )
-            elif cwd_json.exists():
-                shutil.move(str(cwd_json), str(config_dir / "playlists.json"))
-                logger.info(
-                    "Migrated playlists.json to config directory",
-                    from_path=str(cwd_json),
-                    to_path=str(config_dir / "playlists.json"),
-                )
+        if not (cwd_toml.exists() or cwd_json.exists()):
+            return None
+        if config_toml.exists():
+            return None
 
-        self.load()
+        config_dir.mkdir(parents=True, exist_ok=True)
+        if cwd_toml.exists():
+            destination = config_toml
+            shutil.move(str(cwd_toml), str(destination))
+            logger.info(
+                "Migrated playlists.toml to config directory",
+                from_path=str(cwd_toml),
+                to_path=str(destination),
+            )
+            return destination
+        if cwd_json.exists():
+            destination = config_dir / "playlists.json"
+            shutil.move(str(cwd_json), str(destination))
+            logger.info(
+                "Migrated playlists.json to config directory",
+                from_path=str(cwd_json),
+                to_path=str(destination),
+            )
+            return destination
+        return None
 
     def _get_default_config_path(self) -> Path:
         """Get default configuration file path."""
@@ -157,19 +170,20 @@ class Config:
 
         if not playlists_file.exists():
             skeleton = """# YouTube playlists to archive
-# Format: Each playlist needs an 'id'(from URL) and'path'(relative to archive directory)
+# Format: each playlist needs an id (from URL) and path (relative to archive directory)
 
 [[playlists]]
-id ="YOUR_PLAYLIST_ID_HERE"
+id = "YOUR_PLAYLIST_ID_HERE"
 path = "My Playlist"
 
 # Example with playlist-specific overrides:
 # [[playlists]]
 # id = "UC_x5XG1OV2P6uZZ5FSM9Ttw"
 # path = "Google Developers"
-# download.format = "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
-# download.writesubtitles = true
-# download.subtitle_languages = ["en", "es"]
+# [playlists.download]
+# format = "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
+# write_subtitles = true
+# subtitle_languages = ["en", "es"]
 """
             playlists_file.parent.mkdir(parents=True, exist_ok=True)
             playlists_file.write_text(skeleton.strip() + "\n")
@@ -191,7 +205,6 @@ path = "My Playlist"
             if playlists_file.suffix.lower() == ".toml":
                 with open(playlists_file, encoding="utf-8") as f:
                     playlists_data = toml.load(f)
-                    # FIX: Changed from "playlist"to"playlists" (plural)
                     return playlists_data.get("playlists", [])
             else:
                 # Legacy JSON handling...
@@ -223,23 +236,24 @@ path = "My Playlist"
                     playlist_data = playlist
                     break
 
-        # Start with global defaults
-        merged_config = {}
-
-        # Add global download settings
-        for key in [
-            "format",
-            "merge_output_format",
-            "writesubtitles",
-            "subtitlesformat",
-            "convertsubtitles",
-            "subtitle_languages",
-            "writethumbnail",
-            "thumbnail_format",
-        ]:
-            global_value = self.get(f"download.{key}")
-            if global_value is not None:
-                merged_config[key] = global_value
+        # Start with global defaults using canonical keys.
+        merged_config: dict[str, Any] = {}
+        download_aliases = {
+            "format": ("format",),
+            "merge_output_format": ("merge_output_format",),
+            "write_subtitles": ("write_subtitles", "writesubtitles"),
+            "subtitle_format": ("subtitle_format", "subtitlesformat"),
+            "convert_subtitles": ("convert_subtitles", "convertsubtitles"),
+            "subtitle_languages": ("subtitle_languages", "subtitleslangs"),
+            "write_thumbnail": ("write_thumbnail", "writethumbnail"),
+            "thumbnail_format": ("thumbnail_format",),
+        }
+        for canonical_key, aliases in download_aliases.items():
+            for alias in aliases:
+                global_value = self.get(f"download.{alias}")
+                if global_value is not None:
+                    merged_config[canonical_key] = global_value
+                    break
 
         # Override with playlist-specific settings
         playlist_overrides = playlist_data.get("download", {})

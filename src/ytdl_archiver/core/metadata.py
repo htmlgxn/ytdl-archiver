@@ -31,9 +31,9 @@ class MetadataGenerator:
 
             logger.info("NFO file created", nfo_path=str(nfo_path))
 
-        except Exception as e:
+        except (OSError, UnicodeEncodeError, ValueError) as e:
             logger.error("Error writing NFO file", nfo_path=str(nfo_path), error=str(e))
-            raise MetadataError(f"Error writing NFO file {nfo_path}: {e}")
+            raise MetadataError(f"Error writing NFO file {nfo_path}: {e}") from e
 
     def _generate_nfo_content(self, metadata: dict[str, Any]) -> str:
         """Generate NFO content from metadata."""

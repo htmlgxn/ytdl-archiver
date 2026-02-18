@@ -1,179 +1,142 @@
 # ytdl-archiver
 
-A modern Python application for downloading YouTube **playlists** with thumbnails and generating metadata `.nfo` files for media servers.
-Ideal for Jellyfin / Emby users + archivists.
-
-Based on [ytdl-nfo](https://github.com/htmlgxn/ytdl-nfo) and [yt-dlp](https://github.com/yt-dlp/yt-dlp)
-
-## Version 2.0 - Modern Architecture
-
-This version has been completely modernized with:
-- **uv** for dependency management
-- **TOML** configuration files
-- **Structured logging** with JSON output
-- **Comprehensive testing** with pytest
-- **Retry logic** with tenacity
-- **Type hints** for code clarity
-- **CI/CD** with GitHub Actions
-- **Modern CLI** with click
+Modern Python CLI for archiving YouTube playlists with media-server-friendly sidecar files.
 
 ## Features
-- Set the path to your YouTube archive
-- Name folders within your archive (per playlist). Supports subpaths
-- Downloads separate .mp4, .nfo, and .jpg file for media server readability
-- Creates an .archive.txt file in each playlist folder to enable rerun and refresh of content efficiently
-- YouTube Shorts save within a subfolder of each playlist path
-- Loops on the hour to keep new videos in the playlist archived once the initial archive has been made
+- Playlist archiving with rerun-safe `.archive.txt` tracking per playlist folder
+- NFO metadata generation for media servers (Kodi/Emby style)
+- Thumbnail and subtitle download support
+- Playlist-specific yt-dlp overrides
+- Output modes: progress (default), quiet, verbose
+- Optional browser-cookie refresh before archive runs
 
-## Installation
-
-### Requirements
+## Requirements
 - Python 3.14+
-- uv (for dependency management)
-- FFmpeg (for video processing)
+- [`uv`](https://docs.astral.sh/uv/)
+- FFmpeg available on PATH
 
-### Quick Install
+## Install
 ```bash
 git clone https://github.com/htmlgxn/ytdl-archiver.git
 cd ytdl-archiver
-uv sync
-```
-
-### Development Install
-```bash
-git clone https://github.com/htmlgxn/ytdl-archiver.git
-cd ytdl-archiver
-uv sync --all-groups
-# or
 uv sync --dev
 ```
 
-## Usage
+## Quick Start
 
-### 1. Initialize Configuration
+### 1. Initialize config
 ```bash
 uv run ytdl-archiver init-config
 ```
-This creates a configuration file at `~/.config/ytdl-archiver/config.toml`.
 
-### 2. Configure Playlists
-You can use either JSON (legacy) or TOML (recommended) format:
+Default config path:
+- `~/.config/ytdl-archiver/config.toml`
 
-#### TOML Format (Recommended)
-Create/edit `playlists.toml`:
+### 2. Define playlists
+Create `~/.config/ytdl-archiver/playlists.toml` (or pass `-p/--playlists` at runtime).
+
 ```toml
 [[playlists]]
 id = "UUxxxxxxxxxxxxxxxxxxxxxx"
-path = "Folder Name"
+path = "Music/Example Channel"
 name = "Example Music Channel"
 
-# Override download settings for this playlist
-[playlist.download]
-format = "bestaudio"  # Music only needs audio
-writesubtitles = false  # Music doesn't need subtitles
-write_thumbnail = true
+[playlists.download]
+format = "bestaudio"
+writesubtitles = false
+writethumbnail = true
 
 [[playlists]]
 id = "PLOggx_xxxxxxxxxxxxxxxxxx_xxxxxxxx"
-path = "unlisted/cool_videos"
-name = "Tutorial Channel"
+path = "Tutorials/Example"
+name = "Example Tutorials"
 
-[playlist.download]
-format = "bestvideo[height<=720]+bestaudio"  # Lower quality for tutorials
-writesubtitles = true  # Tutorials need subtitles
-subtitle_languages = ["en", "es"]  # Multiple languages
+[playlists.download]
+format = "bestvideo[height<=720]+bestaudio"
+write_subtitles = true
+subtitle_languages = ["en", "es"]
 write_thumbnail = true
 ```
 
-#### JSON Format (Legacy)
-Edit your `playlists.json` file:
-```json
-[
-    {
-        "id": "UUxxxxxxxxxxxxxxxxxxxxxx",
-        "path": "Channel Name"
-    },
-    {
-        "id": "PLOggx_xxxxxxxxxxxxxxxxxx_xxxxxxxx",
-        "path": "unlisted/cool_videos"
-    }
-]
-```
+Notes:
+- `[[playlists]]` entries are loaded from the `playlists` array.
+- If both TOML and JSON exist in the config dir, TOML is preferred.
+- Playlist overrides may use yt-dlp-style keys (`writesubtitles`, `writethumbnail`, etc.) or snake_case aliases (`write_subtitles`, `write_thumbnail`).
 
-> **Note**: If both `playlists.toml` and `playlists.json` exist, TOML format will be used.
-
-### 3. Run the Archiver
+### 3. Run archiving
 ```bash
 uv run ytdl-archiver archive
 ```
 
-### CLI Commands
+## CLI
+
+### Global options
 ```bash
-# Archive with custom playlists file (JSON or TOML)
+uv run ytdl-archiver --help
+```
+
+```text
+Options:
+  -c, --config PATH
+  -v, --verbose
+  -q, --quiet
+  --no-color
+```
+
+### `archive`
+```bash
+uv run ytdl-archiver archive --help
+```
+
+```text
+Options:
+  -p, --playlists PATH
+  -d, --directory PATH
+  --cookies-browser [firefox|chrome|chromium|brave|edge|opera|vivaldi|whale|safari]
+  --cookies-profile TEXT
+```
+
+Examples:
+```bash
+# Use custom playlists file
 uv run ytdl-archiver archive -p /path/to/playlists.toml
 
-# Archive to custom directory
+# Use custom archive directory
 uv run ytdl-archiver archive -d /path/to/archive
 
 # Use custom config file
 uv run ytdl-archiver -c /path/to/config.toml archive
 
-# Enable verbose logging
+# Refresh cookies from Firefox profile before run
+uv run ytdl-archiver archive --cookies-browser firefox --cookies-profile default
+
+# Verbose mode
 uv run ytdl-archiver -v archive
+```
 
-# Convert JSON playlists to TOML format
+### `convert-playlists`
+```bash
 uv run ytdl-archiver convert-playlists -i playlists.json -o playlists.toml
-
-# Show help
-uv run ytdl-archiver --help
 ```
 
-## Setup as a Service
-
-Copy the service file to your system and edit it:
+### `init-config`
 ```bash
-sudo cp optional/ytdl-archiver.service /etc/systemd/system/ytdl-archiver.service
-sudo nano /etc/systemd/system/ytdl-archiver.service
+uv run ytdl-archiver init-config -o /path/to/config.toml
 ```
 
-Then enable and start:
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable ytdl-archiver.service
-sudo systemctl start ytdl-archiver.service
-```
+## Configuration Reference
 
-## Configuration
+### File and precedence behavior
+- Config file default: `~/.config/ytdl-archiver/config.toml`
+- Playlists file resolution:
+1. Explicit override (`--playlists` / `config.set_playlists_file`)
+2. `~/.config/ytdl-archiver/playlists.toml`
+3. `~/.config/ytdl-archiver/playlists.json` (legacy)
+4. Fallback target path: `~/.config/ytdl-archiver/playlists.toml`
+- Startup migration behavior:
+  - If `playlists.toml` or `playlists.json` exists in the current working directory and config-dir `playlists.toml` does not, the file is moved into the config directory.
 
-The new version uses TOML configuration files. Here are the main sections:
-
-### Playlist-Specific Settings
-- Per-playlist yt-dlp customization
-- Override global download settings
-- Flexible configuration inheritance
-- TOML playlist format support
-
-#### Example: Different Settings per Playlist
-```toml
-# Music playlist - audio only
-[[playlists]]
-id = "music_channel_id"
-path = "Music"
-[playlist.download]
-format = "bestaudio"
-writesubtitles = false
-
-# Tutorial playlist - video with subtitles
-[[playlists]]
-id = "tutorial_channel_id"
-path = "Tutorials"
-[playlist.download]
-format = "bestvideo[height<=720]+bestaudio"
-writesubtitles = true
-subtitle_languages = ["en", "es"]
-```
-
-### Archive Settings
+### Global defaults (`config.toml`)
 ```toml
 [archive]
 base_directory = "~/Videos/YouTube"
@@ -181,12 +144,9 @@ delay_between_videos = 10
 delay_between_playlists = 30
 max_retries = 3
 retry_backoff_factor = 2.0
-```
 
-### Download Settings
-```toml
 [download]
-format = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4"
+format = "bestvideo+bestaudio/best"
 merge_output_format = "mp4"
 write_subtitles = true
 subtitle_format = "vtt"
@@ -194,29 +154,33 @@ convert_subtitles = "srt"
 subtitle_languages = ["en"]
 write_thumbnail = true
 thumbnail_format = "jpg"
-```
+max_concurrent_downloads = 1
 
-### YouTube Shorts
-```toml
 [shorts]
 detect_shorts = true
 shorts_subdirectory = "YouTube Shorts"
 aspect_ratio_threshold = 0.7
-```
 
-### Logging
-```toml
 [logging]
 level = "INFO"
-format = "json"  # "json" or "console"
+format = "json"
 file_path = "~/.local/share/ytdl-archiver/logs/app.log"
 max_file_size = "10MB"
 backup_count = 5
+
+[http]
+user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+request_timeout = 30
+connect_timeout = 10
+cookie_file = "~/cookies.txt"
+
+[media_server]
+generate_nfo = true
+nfo_format = "kodi"
 ```
 
-## Development
+## Systemd Service (optional)
+See `optional/ytdl-archiver.service`.
 
-See [docs/development.md](docs/development.md) for development documentation including:
-- Running tests
-- Code quality tools
-- Project structure
+## Development
+See `docs/development.md`.

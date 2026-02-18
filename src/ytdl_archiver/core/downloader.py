@@ -17,7 +17,7 @@ from tenacity import (
 
 from ..config.settings import Config
 from ..exceptions import DownloadError
-from ..output import emit_formatter_message
+from ..output import emit_formatter_message, emit_rendered
 from .utils import (
     is_short,
     sanitize_filename,
@@ -70,7 +70,7 @@ class ProgressCallback:
                 else:
                     # Fallback to old behavior
                     start_msg = f"🔵 Starting download: {title}"
-                    print(start_msg, flush=True)
+                    emit_rendered(start_msg)
 
             # Update progress bar
             if hasattr(self.formatter, "update_video_progress"):
@@ -92,7 +92,7 @@ class ProgressCallback:
                     },
                 )
                 if progress_msg:
-                    print(progress_msg, end="\r", flush=True)
+                    emit_rendered(progress_msg)
 
         elif d["status"] == "finished" and self.formatter:
             if self.current_video:
@@ -110,12 +110,9 @@ class ProgressCallback:
                 # Close progress bar and show completion
                 if hasattr(self.formatter, "close_video_progress"):
                     self.formatter.close_video_progress()
-                else:
-                    # Fallback to old behavior
-                    print(" " * 120, end="\r")
 
                 complete_msg = self.formatter.video_complete(title, resolution, size)
-                print(complete_msg)
+                emit_rendered(complete_msg)
                 self.current_video = None
 
 
@@ -276,7 +273,7 @@ class YouTubeDownloader:
                 return ydl.extract_info(video_url, download=True)
         except yt_dlp.DownloadError as e:
             logger.error("Download failed", video_url=video_url, error=str(e))
-            raise DownloadError(f"Failed to download {video_url}: {e}")
+            raise DownloadError(f"Failed to download {video_url}: {e}") from e
         except Exception as e:
             emit_formatter_message(
                 self.formatter, "error", f"Unexpected error downloading video - {e!s}"
@@ -286,7 +283,7 @@ class YouTubeDownloader:
                 video_url=video_url,
                 error=str(e),
             )
-            raise DownloadError(f"Unexpected error downloading {video_url}: {e}")
+            raise DownloadError(f"Unexpected error downloading {video_url}: {e}") from e
 
     def _download_with_effective_config(
         self,
