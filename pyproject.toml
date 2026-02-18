@@ -15,8 +15,6 @@ dependencies = [
     # JS runtime integration used by yt-dlp ecosystem features
     "yt-dlp-ejs>=0.4.0",
     "deno>=2.6.10",
-    # App/runtime libraries
-    "python-ffmpeg>=2.0.12",
     "toml>=0.10.2,<0.11.0",
     "structlog>=24.2.0,<25.0.0",
     "tenacity>=9.0.0,<10.0.0",

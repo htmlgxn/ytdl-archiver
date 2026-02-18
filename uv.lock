@@ -182,18 +182,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pyee"
-version = "13.0.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/8b/04/e7c1fe4dc78a6fdbfd6c337b1c3732ff543b8a397683ab38378447baa331/pyee-13.0.1.tar.gz", hash = "sha256:0b931f7c14535667ed4c7e0d531716368715e860b988770fc7eb8578d1f67fc8", size = 31655, upload-time = "2026-02-14T21:12:28.044Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a0/c4/b4d4827c93ef43c01f599ef31453ccc1c132b353284fc6c87d535c233129/pyee-13.0.1-py3-none-any.whl", hash = "sha256:af2f8fede4171ef667dfded53f96e2ed0d6e6bd7ee3bb46437f77e3b57689228", size = 15659, upload-time = "2026-02-14T21:12:26.263Z" },
-]
-
-[[package]]
 name = "pygments"
 version = "2.19.2"
 source = { registry = "https://pypi.org/simple" }
@@ -242,19 +230,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/68/14/eb014d26be205d38ad5ad20d9a80f7d201472e08167f0bb4361e251084a9/pytest_mock-3.15.1.tar.gz", hash = "sha256:1849a238f6f396da19762269de72cb1814ab44416fa73a8686deac10b0d87a0f", size = 34036, upload-time = "2025-09-16T16:37:27.081Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5a/cc/06253936f4a7fa2e0f48dfe6d851d9c56df896a9ab09ac019d70b760619c/pytest_mock-3.15.1-py3-none-any.whl", hash = "sha256:0a25e2eb88fe5168d535041d09a4529a188176ae608a6d249ee65abc0949630d", size = 10095, upload-time = "2025-09-16T16:37:25.734Z" },
-]
-
-[[package]]
-name = "python-ffmpeg"
-version = "2.0.12"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pyee" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/dd/4d/7ecffb341d646e016be76e36f5a42cb32f409c9ca21a57b68f067fad3fc7/python_ffmpeg-2.0.12.tar.gz", hash = "sha256:19ac80af5a064a2f53c245af1a909b2d7648ea045500d96d3bcd507b88d43dc7", size = 14126292, upload-time = "2024-04-15T10:15:31.878Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/7f/6d/02e817aec661defe148cb9eb0c4eca2444846305f625c2243fb9f92a9045/python_ffmpeg-2.0.12-py3-none-any.whl", hash = "sha256:d86697da8dfb39335183e336d31baf42fb217468adf5ac97fd743898240faae3", size = 14411, upload-time = "2024-04-15T10:15:28.966Z" },
 ]
 
 [[package]]
@@ -372,15 +347,6 @@ wheels = [
 ]
 
 [[package]]
-name = "typing-extensions"
-version = "4.15.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/72/94/1a15dd82efb362ac84269196e94cf00f187f7ed21c242792a923cdb1c61f/typing_extensions-4.15.0.tar.gz", hash = "sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466", size = 109391, upload-time = "2025-08-25T13:49:26.313Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/18/67/36e9267722cc04a6b9f15c7f3441c2363321a3ea07da7ae0c0707beb2a9c/typing_extensions-4.15.0-py3-none-any.whl", hash = "sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548", size = 44614, upload-time = "2025-08-25T13:49:24.86Z" },
-]
-
-[[package]]
 name = "virtualenv"
 version = "20.36.1"
 source = { registry = "https://pypi.org/simple" }
@@ -421,7 +387,6 @@ dependencies = [
     { name = "colorama" },
     { name = "deno" },
     { name = "pathvalidate" },
-    { name = "python-ffmpeg" },
     { name = "structlog" },
     { name = "tenacity" },
     { name = "toml" },
@@ -446,7 +411,6 @@ requires-dist = [
     { name = "colorama", specifier = ">=0.4.6,<0.5.0" },
     { name = "deno", specifier = ">=2.6.10" },
     { name = "pathvalidate", specifier = ">=3.0.0,<4.0.0" },
-    { name = "python-ffmpeg", specifier = ">=2.0.12" },
     { name = "structlog", specifier = ">=24.2.0,<25.0.0" },
     { name = "tenacity", specifier = ">=9.0.0,<10.0.0" },
     { name = "toml", specifier = ">=0.10.2,<0.11.0" },
