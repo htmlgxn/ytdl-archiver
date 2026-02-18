@@ -78,7 +78,7 @@ def cli(
         console_output = verbose or ctx.obj.get("output_mode") == "verbose"
         setup_logging(ctx.obj["config"]._config, console_output=console_output)
 
-        logger.info("YTDL-Archiver started", version="2.0.0")
+        logger.info("YTDL-Archiver started", version="2026.2.7")
 
     except Exception as e:
         click.echo(f"Error initializing application: {e}", err=True)
@@ -101,13 +101,14 @@ def cli(
 @click.pass_context
 def archive(ctx: click.Context, playlists: Path | None, directory: Path | None) -> None:
     """Archive YouTube playlists."""
+    formatter = None
     try:
         config = ctx.obj["config"]
         output_mode = ctx.obj.get("output_mode", "progress")
         use_colors = ctx.obj.get("use_colors", True)
 
         if playlists:
-            config._config["playlists_file"] = str(playlists)
+            config.set_playlists_file(playlists)
         if directory:
             config._config["archive"]["base_directory"] = str(directory)
 
@@ -123,16 +124,26 @@ def archive(ctx: click.Context, playlists: Path | None, directory: Path | None) 
         formatter = get_formatter(use_colors, show_progress=True, mode=output_mode)
 
         # Print header
-        print(formatter.header("2.0.0"))
+        print(formatter.header("2026.2.7"))
 
         archiver = PlaylistArchiver(config, formatter)
         archiver.run()  # Will now safely load playlists from config directory
 
     except KeyboardInterrupt:
-        formatter.error("Operation cancelled by user")
+        if formatter:
+            message = formatter.error("Operation cancelled by user")
+            if message:
+                click.echo(message, err=True)
+        else:
+            click.echo("Operation cancelled by user", err=True)
         sys.exit(130)
     except Exception as e:
-        formatter.error(f"Archive failed - {e!s}")
+        if formatter:
+            message = formatter.error(f"Archive failed - {e!s}")
+            if message:
+                click.echo(message, err=True)
+        else:
+            click.echo(f"Archive failed - {e!s}", err=True)
         sys.exit(1)
 
 

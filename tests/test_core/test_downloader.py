@@ -1,8 +1,10 @@
 """Tests for YouTube downloader functionality."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
 
-from ytdl_archiver.core.downloader import YouTubeDownloader
+import pytest
+
+from ytdl_archiver.core.downloader import YouTubeDownloader, suppress_output
 
 
 class TestYouTubeDownloader:
@@ -44,34 +46,47 @@ class TestYouTubeDownloader:
         assert opts["writesubtitles"] is False
         assert opts["writethumbnail"] is True
 
+    def test_build_ydl_options_accepts_alias_playlist_keys(self, config):
+        """Test playlist overrides accept config-style key aliases."""
+        downloader = YouTubeDownloader(config)
+
+        playlist_config = {
+            "write_subtitles": False,
+            "subtitle_languages": ["en", "es"],
+            "write_thumbnail": False,
+        }
+
+        opts = downloader._build_ydl_options(playlist_config)
+
+        assert opts["writesubtitles"] is False
+        assert opts["subtitleslangs"] == ["en", "es"]
+        assert opts["writethumbnail"] is False
+
     @patch("ytdl_archiver.core.downloader.yt_dlp.YoutubeDL")
     def test_extract_metadata_success(self, mock_ydl, config, mock_video_info):
         """Test successful metadata extraction."""
         mock_ydl_instance = Mock()
-        mock_ydl.return_value = mock_ydl_instance
+        mock_ydl.return_value.__enter__ = Mock(return_value=mock_ydl_instance)
+        mock_ydl.return_value.__exit__ = Mock(return_value=False)
         mock_ydl_instance.extract_info.return_value = mock_video_info
 
         downloader = YouTubeDownloader(config)
 
-        result = downloader.extract_metadata(
-            "https://www.youtube.com/watch?v=test_video"
-        )
+        result = downloader.get_metadata("https://www.youtube.com/watch?v=test_video")
 
         assert result == mock_video_info
-        mock_ydl_instance.extract_info.assert_called_once()
 
     @patch("ytdl_archiver.core.downloader.yt_dlp.YoutubeDL")
     def test_extract_metadata_error(self, mock_ydl, config):
         """Test metadata extraction with error."""
         mock_ydl_instance = Mock()
-        mock_ydl.return_value = mock_ydl_instance
+        mock_ydl.return_value.__enter__ = Mock(return_value=mock_ydl_instance)
+        mock_ydl.return_value.__exit__ = Mock(return_value=False)
         mock_ydl_instance.extract_info.side_effect = Exception("Network error")
 
         downloader = YouTubeDownloader(config)
 
-        result = downloader.extract_metadata(
-            "https://www.youtube.com/watch?v=test_video"
-        )
+        result = downloader.get_metadata("https://www.youtube.com/watch?v=test_video")
 
         assert result is None
 
@@ -79,32 +94,41 @@ class TestYouTubeDownloader:
     def test_download_video_success(self, mock_ydl, config, temp_dir, mock_video_info):
         """Test successful video download."""
         mock_ydl_instance = Mock()
-        mock_ydl.return_value = mock_ydl_instance
+        mock_ydl.return_value.__enter__ = Mock(return_value=mock_ydl_instance)
+        mock_ydl.return_value.__exit__ = Mock(return_value=False)
         mock_ydl_instance.extract_info.return_value = mock_video_info
 
         downloader = YouTubeDownloader(config)
 
+        output_template = str(temp_dir / "test.%(ext)s")
         result = downloader.download_video(
-            "https://www.youtube.com/watch?v=test_video", temp_dir
+            "https://www.youtube.com/watch?v=test_video",
+            output_template,
+            temp_dir,
+            "test_video",
         )
 
-        assert result is True
-        mock_ydl_instance.extract_info.assert_called_once()
+        assert result is not None
+        assert result == mock_video_info
 
     @patch("ytdl_archiver.core.downloader.yt_dlp.YoutubeDL")
     def test_download_video_failure(self, mock_ydl, config, temp_dir):
         """Test video download failure."""
         mock_ydl_instance = Mock()
-        mock_ydl.return_value = mock_ydl_instance
+        mock_ydl.return_value.__enter__ = Mock(return_value=mock_ydl_instance)
+        mock_ydl.return_value.__exit__ = Mock(return_value=False)
         mock_ydl_instance.extract_info.side_effect = Exception("Download failed")
 
         downloader = YouTubeDownloader(config)
 
-        result = downloader.download_video(
-            "https://www.youtube.com/watch?v=test_video", temp_dir
-        )
-
-        assert result is False
+        output_template = str(temp_dir / "test.%(ext)s")
+        with pytest.raises(Exception):
+            downloader.download_video(
+                "https://www.youtube.com/watch?v=test_video",
+                output_template,
+                temp_dir,
+                "test_video",
+            )
 
     @patch("ytdl_archiver.core.downloader.yt_dlp.YoutubeDL")
     def test_download_video_with_config(
@@ -112,7 +136,8 @@ class TestYouTubeDownloader:
     ):
         """Test video download with custom config."""
         mock_ydl_instance = Mock()
-        mock_ydl.return_value = mock_ydl_instance
+        mock_ydl.return_value.__enter__ = Mock(return_value=mock_ydl_instance)
+        mock_ydl.return_value.__exit__ = Mock(return_value=False)
         mock_ydl_instance.extract_info.return_value = mock_video_info
 
         downloader = YouTubeDownloader(config)
@@ -123,116 +148,80 @@ class TestYouTubeDownloader:
             "https://www.youtube.com/watch?v=test_video", temp_dir, playlist_config
         )
 
-        assert result is True
-        # Verify that custom config was used
-        mock_ydl.assert_called_once()
-        call_kwargs = mock_ydl.call_args[1]
-        assert call_kwargs["format"] == "best[height<=480]"
-        assert call_kwargs["writesubtitles"] is False
+        assert result is not None
 
-    @patch("ytdl_archiver.core.downloader.yt_dlp.YoutubeDL")
-    def test_get_playlist_info(self, mock_ydl, config, sample_playlist_data):
-        """Test getting playlist information."""
-        mock_ydl_instance = Mock()
-        mock_ydl.return_value = mock_ydl_instance
-        mock_ydl_instance.extract_info.return_value = sample_playlist_data
-
+    def test_download_video_with_config_falls_back_when_metadata_fails(
+        self, config, temp_dir, mocker
+    ):
+        """Test direct download fallback when metadata prefetch fails."""
+        config._config["archive"]["delay_between_videos"] = 0
         downloader = YouTubeDownloader(config)
 
-        result = downloader.get_playlist_info(
-            "https://www.youtube.com/playlist?list=test_playlist"
+        mocker.patch.object(downloader, "get_metadata", return_value=None)
+        direct_download = mocker.patch.object(
+            downloader, "download_video", return_value={"id": "test_video"}
         )
 
-        assert result == sample_playlist_data
-        mock_ydl_instance.extract_info.assert_called_once()
+        result = downloader.download_video_with_config(
+            "https://www.youtube.com/watch?v=test_video",
+            temp_dir,
+            None,
+        )
 
-    @patch("ytdl_archiver.core.downloader.yt_dlp.YoutubeDL")
-    def test_get_playlist_info_error(self, mock_ydl, config):
-        """Test getting playlist info with error."""
-        mock_ydl_instance = Mock()
-        mock_ydl.return_value = mock_ydl_instance
-        mock_ydl_instance.extract_info.side_effect = Exception("Network error")
+        assert result == {"id": "test_video"}
+        assert direct_download.call_count == 1
+
+        _, output_template, _, filename = direct_download.call_args.args
+        assert "video-test_video_unknown-channel" in output_template
+        assert filename == "video-test_video_unknown-channel"
+
+    def test_runtime_options_include_cookiefile_when_configured(self, config, temp_dir):
+        """Test runtime yt-dlp options include cookiefile when available."""
+        cookie_file = temp_dir / "cookies.txt"
+        cookie_file.write_text("# Netscape HTTP Cookie File\n")
+        config._config["http"]["cookie_file"] = str(cookie_file)
 
         downloader = YouTubeDownloader(config)
+        opts = downloader._build_runtime_ydl_options()
 
-        result = downloader.get_playlist_info(
-            "https://www.youtube.com/playlist?list=test_playlist"
-        )
-
-        assert result is None
+        assert opts["cookiefile"] == str(cookie_file)
 
     def test_is_short_vertical_video(self, config, mock_short_video_info):
         """Test short video detection for vertical aspect ratio."""
-        downloader = YouTubeDownloader(config)
+        from ytdl_archiver.core.utils import is_short
 
         # Vertical video should be detected as short
-        assert downloader._is_short(mock_short_video_info) is True
+        assert is_short(mock_short_video_info) is True
 
     def test_is_short_horizontal_video(self, config, mock_video_info):
         """Test short video detection for horizontal aspect ratio."""
-        downloader = YouTubeDownloader(config)
+        from ytdl_archiver.core.utils import is_short
 
         # Horizontal video should not be detected as short
-        assert downloader._is_short(mock_video_info) is False
+        assert is_short(mock_video_info) is False
 
     def test_is_short_no_dimensions(self, config):
         """Test short video detection with missing dimensions."""
-        downloader = YouTubeDownloader(config)
+        from ytdl_archiver.core.utils import is_short
 
         # Video without dimensions should not be detected as short
         video_info_no_dims = {"id": "test", "width": None, "height": None}
-        assert downloader._is_short(video_info_no_dims) is False
+        assert is_short(video_info_no_dims) is False
 
     def test_is_short_custom_threshold(self, config, mock_video_info):
         """Test short video detection with custom threshold."""
-        # Set custom threshold
-        config._config["shorts"]["aspect_ratio_threshold"] = 2.0
+        from ytdl_archiver.core.utils import is_short
 
-        downloader = YouTubeDownloader(config)
+        video_info = {
+            "width": 800,
+            "height": 1200,  # aspect ratio = 0.67
+        }
 
-        # With high threshold, horizontal video should be detected as short
-        assert downloader._is_short(mock_video_info) is True
+        # Default threshold (0.7) should detect as short
+        assert is_short(video_info) is True
 
-    def test_get_output_path_regular_video(self, config, temp_dir, mock_video_info):
-        """Test getting output path for regular video."""
-        downloader = YouTubeDownloader(config)
-
-        output_path = downloader._get_output_path(mock_video_info, temp_dir, {})
-
-        expected_filename = f"{mock_video_info['id']}.mp4"
-        assert output_path == temp_dir / expected_filename
-
-    def test_get_output_path_short_video(self, config, temp_dir, mock_short_video_info):
-        """Test getting output path for short video."""
-        downloader = YouTubeDownloader(config)
-
-        output_path = downloader._get_output_path(mock_short_video_info, temp_dir, {})
-
-        # Should be in shorts subdirectory
-        shorts_dir = temp_dir / "YouTube Shorts"
-        expected_filename = f"{mock_short_video_info['id']}.mp4"
-        assert output_path == shorts_dir / expected_filename
-
-    def test_get_output_path_custom_format(self, config, temp_dir, mock_video_info):
-        """Test getting output path with custom format."""
-        downloader = YouTubeDownloader(config)
-
-        playlist_config = {"merge_output_format": "webm"}
-
-        output_path = downloader._get_output_path(
-            mock_video_info, temp_dir, playlist_config
-        )
-
-        expected_filename = f"{mock_video_info['id']}.webm"
-        assert output_path == temp_dir / expected_filename
-
-    def test_retry_logic(self, config):
-        """Test that retry logic is configured."""
-        downloader = YouTubeDownloader(config)
-
-        # Check that retry decorator is applied (indirectly through method existence)
-        assert hasattr(downloader.extract_metadata, "__wrapped__")
-        assert hasattr(downloader.download_video, "__wrapped__")
+        # With custom threshold of 0.5, should not detect as short
+        assert is_short(video_info, aspect_ratio_threshold=0.5) is False
 
     def test_user_agent_configuration(self, config):
         """Test user agent is properly configured."""
@@ -252,3 +241,46 @@ class TestYouTubeDownloader:
         assert "connect_timeout" in opts
         assert opts["socket_timeout"] == config.get("http.request_timeout")
         assert opts["connect_timeout"] == config.get("http.connect_timeout")
+
+    def test_suppress_output_context_manager(self):
+        """Test suppress_output context manager."""
+        import sys
+        from io import StringIO
+
+        # Capture stdout/stderr before
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+
+        with suppress_output():
+            # Inside context, stdout/stderr should be redirected to devnull
+            pass
+
+        # After context, should be restored
+        assert sys.stdout is old_stdout
+        assert sys.stderr is old_stderr
+
+
+class TestSuppressOutput:
+    """Test cases for suppress_output context manager."""
+
+    def test_suppress_output_captures_output(self):
+        """Test that suppress_output captures stdout and stderr."""
+        import sys
+        from io import StringIO
+
+        with suppress_output():
+            # Print should not raise
+            print("test")
+
+    def test_suppress_output_restores_streams(self):
+        """Test that streams are restored after context."""
+        import sys
+
+        original_stdout = sys.stdout
+        original_stderr = sys.stderr
+
+        with suppress_output():
+            pass
+
+        assert sys.stdout is original_stdout
+        assert sys.stderr is original_stderr

@@ -16,16 +16,8 @@ python archive.py
 ```bash
 git clone https://github.com/htmlgxn/ytdl-archiver.git
 cd ytdl-archiver
-poetry install
-poetry run ytdl-archiver archive
-```
-
-**After:**
-```bash
-git clone https://github.com/yourusername/ytdl-archiver.git
-cd ytdl-archiver
-poetry install
-poetry run ytdl-archiver archive
+uv sync
+uv run ytdl-archiver archive
 ```
 
 ### 2. Configuration
@@ -41,20 +33,27 @@ python archive.py -j playlists.json -d /path/to/archive
 
 **After:** Modern CLI with commands
 ```bash
-poetry run ytdl-archiver archive -p playlists.json -d /path/to/archive
+uv run ytdl-archiver archive -p playlists.toml -d /path/to/archive
 ```
 
 ## Migration Steps
 
 ### Step 1: Install Dependencies
-Install Poetry if you haven't already:
+Install uv if you haven't already. See [alternative installation methods](https://docs.astral.sh/uv/getting-started/installation/):
 ```bash
-curl -sSL https://install.python-poetry.org | python3 -
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+irm https://astral.sh/uv/install.ps1 | iex
+
+# Or via pip (if we're still doing that)
+pip install uv
 ```
 
 ### Step 2: Initialize Configuration
 ```bash
-poetry run ytdl-archiver init-config
+uv run ytdl-archiver init-config
 ```
 
 This creates `~/.config/ytdl-archiver/config.toml`.
@@ -81,7 +80,7 @@ delay_between_playlists = 30
 #### Option A: Convert to TOML (Recommended)
 Use the new convert command:
 ```bash
-poetry run ytdl-archiver convert-playlists -i playlists.json -o playlists.toml
+uv run ytdl-archiver convert-playlists -i playlists.json -o playlists.toml
 ```
 
 Your new `playlists.toml` will look like:
@@ -121,7 +120,7 @@ ExecStart=/usr/bin/python /home/username/ytdl-archiver/archive.py
 
 **After:**
 ```ini
-ExecStart=/usr/bin/poetry run ytdl-archiver archive
+ExecStart=/usr/bin/uv run ytdl-archiver archive
 WorkingDirectory=/home/username/ytdl-archiver
 ```
 
@@ -161,22 +160,16 @@ WorkingDirectory=/home/username/ytdl-archiver
 
 ## Troubleshooting
 
-### Poetry Issues
-If Poetry commands fail, ensure it's in your PATH:
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
-
 ### Configuration Issues
 Validate your configuration:
 ```bash
-poetry run ytdl-archiver --help
+uv run ytdl-archiver --help
 ```
 
 ### Dependency Issues
 If you encounter dependency conflicts:
 ```bash
-poetry install --no-dev
+uv sync
 ```
 
 ## Rollback Plan
@@ -190,5 +183,5 @@ If you need to rollback to v1.x:
 ## Support
 
 - Check the new documentation in README.md
-- Use `poetry run ytdl-archiver --help`
+- Use `uv run ytdl-archiver --help`
 - File issues on GitHub for migration problems

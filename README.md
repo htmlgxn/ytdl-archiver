@@ -8,12 +8,12 @@ Based on [ytdl-nfo](https://github.com/htmlgxn/ytdl-nfo) and [yt-dlp](https://gi
 ## Version 2.0 - Modern Architecture
 
 This version has been completely modernized with:
-- **Poetry** for dependency management
+- **uv** for dependency management
 - **TOML** configuration files
 - **Structured logging** with JSON output
 - **Comprehensive testing** with pytest
 - **Retry logic** with tenacity
-- **Type hints** and mypy validation
+- **Type hints** for code clarity
 - **CI/CD** with GitHub Actions
 - **Modern CLI** with click
 
@@ -28,30 +28,31 @@ This version has been completely modernized with:
 ## Installation
 
 ### Requirements
-- Python 3.10+
-- Poetry (for dependency management)
+- Python 3.14+
+- uv (for dependency management)
 - FFmpeg (for video processing)
 
 ### Quick Install
 ```bash
 git clone https://github.com/htmlgxn/ytdl-archiver.git
 cd ytdl-archiver
-poetry install
+uv sync
 ```
 
 ### Development Install
 ```bash
 git clone https://github.com/htmlgxn/ytdl-archiver.git
 cd ytdl-archiver
-poetry install --with dev
-pre-commit install
+uv sync --all-groups
+# or
+uv sync --dev
 ```
 
 ## Usage
 
 ### 1. Initialize Configuration
 ```bash
-poetry run ytdl-archiver init-config
+uv run ytdl-archiver init-config
 ```
 This creates a configuration file at `~/.config/ytdl-archiver/config.toml`.
 
@@ -61,7 +62,7 @@ You can use either JSON (legacy) or TOML (recommended) format:
 #### TOML Format (Recommended)
 Create/edit `playlists.toml`:
 ```toml
-[[playlist]]
+[[playlists]]
 id = "UUxxxxxxxxxxxxxxxxxxxxxx"
 path = "Folder Name"
 name = "Example Music Channel"
@@ -72,7 +73,7 @@ format = "bestaudio"  # Music only needs audio
 writesubtitles = false  # Music doesn't need subtitles
 write_thumbnail = true
 
-[[playlist]]
+[[playlists]]
 id = "PLOggx_xxxxxxxxxxxxxxxxxx_xxxxxxxx"
 path = "unlisted/cool_videos"
 name = "Tutorial Channel"
@@ -103,43 +104,50 @@ Edit your `playlists.json` file:
 
 ### 3. Run the Archiver
 ```bash
-poetry run ytdl-archiver archive
+uv run ytdl-archiver archive
 ```
 
 ### CLI Commands
 ```bash
 # Archive with custom playlists file (JSON or TOML)
-poetry run ytdl-archiver archive -p /path/to/playlists.toml
+uv run ytdl-archiver archive -p /path/to/playlists.toml
 
 # Archive to custom directory
-poetry run ytdl-archiver archive -d /path/to/archive
+uv run ytdl-archiver archive -d /path/to/archive
 
 # Use custom config file
-poetry run ytdl-archiver -c /path/to/config.toml archive
+uv run ytdl-archiver -c /path/to/config.toml archive
 
 # Enable verbose logging
-poetry run ytdl-archiver -v archive
+uv run ytdl-archiver -v archive
 
 # Convert JSON playlists to TOML format
-poetry run ytdl-archiver convert-playlists -i playlists.json -o playlists.toml
+uv run ytdl-archiver convert-playlists -i playlists.json -o playlists.toml
 
 # Show help
-poetry run ytdl-archiver --help
+uv run ytdl-archiver --help
 ```
 
 ## Setup as a Service
-Follow these instructions for your system:
 
-### Linux
-[systemctl](docs/system-process/linux/systemctl.md)
-### MacOS
-Coming soon!
+Copy the service file to your system and edit it:
+```bash
+sudo cp optional/ytdl-archiver.service /etc/systemd/system/ytdl-archiver.service
+sudo nano /etc/systemd/system/ytdl-archiver.service
+```
+
+Then enable and start:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable ytdl-archiver.service
+sudo systemctl start ytdl-archiver.service
+```
 
 ## Configuration
 
 The new version uses TOML configuration files. Here are the main sections:
 
-### 6. Playlist-Specific Settings
+### Playlist-Specific Settings
 - Per-playlist yt-dlp customization
 - Override global download settings
 - Flexible configuration inheritance
@@ -148,7 +156,7 @@ The new version uses TOML configuration files. Here are the main sections:
 #### Example: Different Settings per Playlist
 ```toml
 # Music playlist - audio only
-[[playlist]]
+[[playlists]]
 id = "music_channel_id"
 path = "Music"
 [playlist.download]
@@ -156,7 +164,7 @@ format = "bestaudio"
 writesubtitles = false
 
 # Tutorial playlist - video with subtitles
-[[playlist]]
+[[playlists]]
 id = "tutorial_channel_id"
 path = "Tutorials"
 [playlist.download]
@@ -208,31 +216,7 @@ backup_count = 5
 
 ## Development
 
-### Running Tests
-```bash
-poetry run pytest
-```
-
-### Code Quality
-```bash
-poetry run black src tests
-poetry run isort src tests
-poetry run flake8 src tests
-poetry run mypy src
-```
-
-### Project Structure
-```
-src/ytdl_archiver/
-├── config/          # Configuration management
-├── core/            # Core functionality
-├── cli.py           # Command line interface
-└── exceptions.py    # Custom exceptions
-
-tests/
-├── test_cli/         # CLI tests
-├── test_config/       # Configuration tests
-├── test_core/         # Core functionality tests
-├── test_integration/  # Integration tests
-└── conftest.py       # Test configuration
-```
+See [docs/development.md](docs/development.md) for development documentation including:
+- Running tests
+- Code quality tools
+- Project structure

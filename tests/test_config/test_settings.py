@@ -20,9 +20,7 @@ class TestConfig:
 
         # Test that default values are loaded
         assert config.get("archive.base_directory") == "~/Videos/YouTube"
-        assert (
-            config.get("download.format") == "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4"
-        )
+        assert config.get("download.format") == "bestvideo+bestaudio/best"
         assert config.get("logging.level") == "INFO"
 
     def test_load_user_config(self, sample_config_file):
@@ -121,7 +119,7 @@ class TestConfig:
 
         playlists_file = temp_config_dir / "playlists.toml"
         with open(playlists_file, "w") as f:
-            toml.dump({"playlist": playlists_config}, f)
+            toml.dump({"playlists": playlists_config}, f)
 
         # Create config that points to this playlists file
         config = Config()
@@ -134,9 +132,66 @@ class TestConfig:
         assert playlist_config["format"] == "best[height<=480]"
         assert playlist_config["write_subtitles"] is True
 
-    def test_get_playlist_config_nonexistent(self, sample_config_file):
+    def test_playlists_file_override_is_used(self, temp_config_dir, temp_dir):
+        """Test explicit playlists file override from CLI/config API."""
+        config_file = temp_config_dir / "config.toml"
+        config_file.write_text("")
+
+        # Config-dir playlists should be ignored when override is set.
+        config_dir_playlists = temp_config_dir / "playlists.toml"
+        config_dir_playlists.write_text('[[playlists]]\nid = "config_dir"\npath = "A"\n')
+
+        override_playlists = temp_dir / "override-playlists.toml"
+        override_playlists.write_text('[[playlists]]\nid = "override"\npath = "B"\n')
+
+        config = Config(config_file)
+        config.set_playlists_file(override_playlists)
+
+        assert config.get_playlists_file() == override_playlists
+        playlists = config.load_playlists()
+        assert playlists[0]["id"] == "override"
+        assert playlists[0]["path"] == "B"
+
+    def test_get_playlist_config_disambiguates_by_path(self, temp_config_dir):
+        """Test duplicate playlist IDs are disambiguated by playlist path."""
+        config_file = temp_config_dir / "config.toml"
+        config_file.write_text("")
+
+        playlists_file = temp_config_dir / "playlists.toml"
+        playlists_data = {
+            "playlists": [
+                {
+                    "id": "same_id",
+                    "path": "channel-a",
+                    "download": {"format": "best[height<=720]"},
+                },
+                {
+                    "id": "same_id",
+                    "path": "channel-b",
+                    "download": {"format": "best[height<=480]"},
+                },
+            ]
+        }
+        with open(playlists_file, "w") as f:
+            toml.dump(playlists_data, f)
+
+        config = Config(config_file)
+
+        cfg_a = config.get_playlist_config("same_id", "channel-a")
+        cfg_b = config.get_playlist_config("same_id", "channel-b")
+        cfg_default = config.get_playlist_config("same_id")
+
+        assert cfg_a["format"] == "best[height<=720]"
+        assert cfg_b["format"] == "best[height<=480]"
+        assert cfg_default["format"] == "best[height<=720]"
+
+    def test_get_playlist_config_nonexistent(self, sample_config_file, temp_config_dir):
         """Test getting config for non-existent playlist."""
         config = Config(sample_config_file)
+
+        # Create an empty playlists file so load_playlists() doesn't raise
+        playlists_file = temp_config_dir / "playlists.toml"
+        playlists_file.write_text("# Empty playlists\n")
 
         # Should return empty dict for non-existent playlist
         playlist_config = config.get_playlist_config("nonexistent_playlist")

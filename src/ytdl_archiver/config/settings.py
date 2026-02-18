@@ -1,6 +1,7 @@
 """Configuration management for ytdl-archiver."""
 
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -29,8 +30,6 @@ class Config:
         ).exists():
             config_dir.mkdir(parents=True, exist_ok=True)
             if cwd_toml.exists():
-                import shutil
-
                 shutil.move(str(cwd_toml), str(config_dir / "playlists.toml"))
                 logger.info(
                     "Migrated playlists.toml to config directory",
@@ -103,8 +102,22 @@ class Config:
         )
         return Path(path_str).expanduser()
 
+    def get_cookie_file_path(self) -> Path | None:
+        """Get the cookie file path as Path object, or None if not configured."""
+        cookie_path = self.get("http.cookie_file")
+        if not cookie_path:
+            return None
+        path = Path(cookie_path).expanduser()
+        return path if path.exists() else None
+
     def get_playlists_file(self) -> Path:
         """Get the playlists file path in the config directory."""
+        override = self.get("playlists_file")
+        if override:
+            if isinstance(override, Path):
+                return override.expanduser()
+            return Path(str(override)).expanduser()
+
         config_dir = self.config_path.parent
         toml_file = config_dir / "playlists.toml"
         json_file = config_dir / "playlists.json"  # Legacy support
@@ -114,6 +127,10 @@ class Config:
         if json_file.exists():
             return json_file
         return toml_file  # Default to TOML for new installations
+
+    def set_playlists_file(self, playlists_file: Path) -> None:
+        """Set an explicit playlists file override."""
+        self._config["playlists_file"] = str(playlists_file.expanduser())
 
     def ensure_playlists_file(self) -> None:
         """Create a skeleton playlists.toml file if it doesn't exist."""
@@ -167,19 +184,23 @@ path = "My Playlist"
         except Exception as e:
             raise ConfigurationError(f"Failed to load playlists: {e}")
 
-    def get_playlist_config(self, playlist_id: str) -> dict[str, Any]:
+    def get_playlist_config(
+        self, playlist_id: str, playlist_path: str | None = None
+    ) -> dict[str, Any]:
         """Get merged configuration for a specific playlist."""
         playlists = self.load_playlists()
 
-        # Find the playlist
-        playlist_data = None
-        for playlist in playlists:
-            if playlist.get("id") == playlist_id:
-                playlist_data = playlist
-                break
-
-        if not playlist_data:
+        # Find the playlist; prefer exact (id, path) match when path is available.
+        matches = [playlist for playlist in playlists if playlist.get("id") == playlist_id]
+        if not matches:
             return {}
+
+        playlist_data = matches[0]
+        if playlist_path is not None:
+            for playlist in matches:
+                if playlist.get("path") == playlist_path:
+                    playlist_data = playlist
+                    break
 
         # Start with global defaults
         merged_config = {}

@@ -4,14 +4,16 @@ version = "2026.2.7"
 description = "Modern YouTube playlist archiver with media server metadata support"
 readme = "README.md"
 requires-python = ">=3.14"
-license = {text = "MIT"}
+license = {text = "Unlicense"}
 authors = [
-    {name = "Ben Chitty", email = "htmlgxn@protonmail.com"},
+    {name = "Ben Chitty", email = "htmlgxn@pm.me"},
 ]
 keywords = ["youtube", "archiver", "media-server", "jellyfin", "emby"]
 dependencies = [
-    "yt-dlp==2026.2.4",
-    "yt-dlp-ejs==0.3.1",
+    "yt-dlp>=2026.2.4",
+    "yt-dlp-ejs>=0.4.0",
+    "deno>=2.6.10",
+    "python-ffmpeg>=2.0.12",
     "toml>=0.10.2,<0.11.0",
     "structlog>=24.2.0,<25.0.0",
     "tenacity>=9.0.0,<10.0.0",

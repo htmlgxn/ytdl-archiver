@@ -6,7 +6,7 @@ max_retries = 3
 retry_backoff_factor = 2.0
 
 [download]
-format = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4"
+format = "bestvideo+bestaudio/best"
 merge_output_format = "mp4"
 write_subtitles = true
 subtitle_format = "vtt"
@@ -32,6 +32,7 @@ backup_count = 5
 user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 request_timeout = 30
 connect_timeout = 10
+cookie_file = "~/cookies.txt"
 
 [media_server]
 generate_nfo = true
