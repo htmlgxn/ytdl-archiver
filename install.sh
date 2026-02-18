@@ -64,7 +64,7 @@ is_firefox_installed() {
 
 install_firefox() {
   if is_firefox_installed; then
-    echo "Firefox already installed."
+    echo "Good! Firefox is already installed!"
     return 0
   fi
 
@@ -102,26 +102,97 @@ install_firefox() {
   esac
 }
 
+is_ffmpeg_installed() {
+  if command -v ffmpeg >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if [[ "$(uname -s)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
+    if brew list ffmpeg >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+install_ffmpeg() {
+  if is_ffmpeg_installed; then
+    echo "Good! FFmpeg is already installed!"
+    return 0
+  fi
+
+  case "$(uname -s)" in
+    Darwin)
+      if command -v brew >/dev/null 2>&1; then
+        if ! brew install ffmpeg; then
+          echo "Warning: FFmpeg install failed. Install manually from https://ffmpeg.org/download.html."
+          return 0
+        fi
+      else
+        echo "Homebrew not found. Install FFmpeg manually from https://ffmpeg.org/download.html."
+      fi
+      ;;
+    Linux)
+      if command -v apt-get >/dev/null 2>&1; then
+        run_with_sudo apt-get update
+        if ! run_with_sudo apt-get install -y ffmpeg; then
+          echo "Warning: FFmpeg install failed. Install manually from https://ffmpeg.org/download.html."
+          return 0
+        fi
+      elif command -v dnf >/dev/null 2>&1; then
+        if ! run_with_sudo dnf install -y ffmpeg; then
+          echo "Warning: FFmpeg install failed. Install manually from https://ffmpeg.org/download.html."
+          return 0
+        fi
+      elif command -v pacman >/dev/null 2>&1; then
+        if ! run_with_sudo pacman -Sy --noconfirm ffmpeg; then
+          echo "Warning: FFmpeg install failed. Install manually from https://ffmpeg.org/download.html."
+          return 0
+        fi
+      elif command -v zypper >/dev/null 2>&1; then
+        if ! run_with_sudo zypper --non-interactive install ffmpeg; then
+          echo "Warning: FFmpeg install failed. Install manually from https://ffmpeg.org/download.html."
+          return 0
+        fi
+      else
+        echo "No supported package manager detected. Install FFmpeg manually from https://ffmpeg.org/download.html."
+      fi
+      ;;
+    *)
+      echo "Unsupported OS for automatic FFmpeg install. Install manually from https://ffmpeg.org/download.html."
+      ;;
+  esac
+}
+
 if ! command -v uv >/dev/null 2>&1; then
   echo "uv not found. Installing uv..."
   curl -LsSf https://astral.sh/uv/install.sh | sh
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
-if ! command -v deno >/dev/null 2>&1; then
-  if ask_yes_no "Install Deno? (recommended for best yt-dlp compatibility)" 1; then
+if ask_yes_no "Install Deno? (recommended for best yt-dlp compatibility)" 1; then
+  if ! command -v deno >/dev/null 2>&1; then
     echo "deno not found. Installing deno..."
     curl -fsSL https://deno.land/install.sh | sh
     export PATH="$HOME/.deno/bin:$PATH"
   else
-    echo "Skipping Deno install."
+    echo "Good! Deno is already installed!"
   fi
+else
+  echo "Skipping Deno install."
 fi
 
 if ask_yes_no "Install Firefox? (recommended for cookie import)" 1; then
   install_firefox
 else
   echo "Skipping Firefox install."
+fi
+
+if ask_yes_no "Install FFmpeg? (recommended)" 1; then
+  install_ffmpeg
+else
+  echo "Skipping FFmpeg install."
 fi
 
 echo "Installing ${PACKAGE_NAME}..."
@@ -134,13 +205,18 @@ echo "Launching ${PACKAGE_NAME} setup..."
 
 set +e
 if command -v "${PACKAGE_NAME}" >/dev/null 2>&1; then
-  if [[ -r /dev/tty ]]; then
+  if [[ "$(uname -s)" == "Darwin" ]] && command -v script >/dev/null 2>&1; then
+    # macOS: run through a PTY to ensure ratatui sees an interactive terminal.
+    script -q /dev/null "${PACKAGE_NAME}" init
+  elif [[ -r /dev/tty ]]; then
     "${PACKAGE_NAME}" init </dev/tty >/dev/tty 2>/dev/tty
   else
     "${PACKAGE_NAME}" init
   fi
 else
-  if [[ -r /dev/tty ]]; then
+  if [[ "$(uname -s)" == "Darwin" ]] && command -v script >/dev/null 2>&1; then
+    script -q /dev/null uv tool run "${PACKAGE_NAME}" init
+  elif [[ -r /dev/tty ]]; then
     uv tool run "${PACKAGE_NAME}" init </dev/tty >/dev/tty 2>/dev/tty
   else
     uv tool run "${PACKAGE_NAME}" init
