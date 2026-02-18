@@ -39,7 +39,9 @@ class Colors:
         RESET = colorama.Fore.RESET
         BOLD = colorama.Style.BRIGHT
     else:
-        GREEN = BLUE = YELLOW = RED = GRAY = PURPLE = ORANGE = TEAL = INFO = RESET = BOLD = ""
+        GREEN = BLUE = YELLOW = RED = GRAY = PURPLE = ORANGE = TEAL = INFO = RESET = (
+            BOLD
+        ) = ""
 
 
 class Symbols:
@@ -242,7 +244,7 @@ class ProgressFormatter(BaseFormatter):
         percent_str = str(progress_data.get("percent") or "0%")
         try:
             percent = float(percent_str.replace("%", ""))
-        except (ValueError, AttributeError):
+        except ValueError, AttributeError:
             percent = 0
 
         speed = progress_data.get("speed", "").strip()
@@ -301,7 +303,7 @@ class ProgressFormatter(BaseFormatter):
         percent_str = str(progress_data.get("percent") or "0%")
         try:
             percent = float(percent_str.replace("%", ""))
-        except (ValueError, AttributeError):
+        except ValueError, AttributeError:
             percent = 0
 
         self._current_progress_bar.n = percent

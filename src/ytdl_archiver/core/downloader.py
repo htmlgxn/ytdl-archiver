@@ -22,6 +22,8 @@ from ..output import emit_formatter_message, emit_rendered
 from .utils import (
     is_short,
     sanitize_filename,
+)
+from .utils import (
     suppress_output as shared_suppress_output,
 )
 
@@ -140,7 +142,9 @@ class ProgressCallback:
             if isinstance(raw_value, (int, float)) and raw_value > 0:
                 return self._format_size(int(raw_value))
 
-        size_text = str(d.get("total_bytes_str") or d.get("_total_bytes_str") or "").strip()
+        size_text = str(
+            d.get("total_bytes_str") or d.get("_total_bytes_str") or ""
+        ).strip()
         if not size_text:
             return ""
 
@@ -208,7 +212,9 @@ class ProgressCallback:
                     emit_rendered(progress_msg)
 
         elif d["status"] == "finished" and self.formatter:
-            title = d.get("info_dict", {}).get("title") or self.current_video or "Unknown"
+            title = (
+                d.get("info_dict", {}).get("title") or self.current_video or "Unknown"
+            )
             if self.current_video != title:
                 self._reset_current_video_state(title)
 
@@ -222,9 +228,8 @@ class ProgressCallback:
                 str(d.get("info_dict", {}).get("ext") or "")
             )
 
-            is_primary = (
-                not self._primary_emitted_for_current
-                and (not primary_ext or extension == primary_ext)
+            is_primary = not self._primary_emitted_for_current and (
+                not primary_ext or extension == primary_ext
             )
 
             if is_primary:

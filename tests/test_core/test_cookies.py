@@ -159,7 +159,9 @@ class TestBrowserCookieRefresher:
         )
 
         refresher = BrowserCookieRefresher()
-        mocker.patch.object(refresher, "_firefox_profile_roots", return_value=[temp_dir])
+        mocker.patch.object(
+            refresher, "_firefox_profile_roots", return_value=[temp_dir]
+        )
         output_path = temp_dir / "cookies.txt"
         refresher.refresh_to_file("firefox", "does-not-exist", output_path)
 
@@ -176,7 +178,9 @@ class TestBrowserCookieRefresher:
         )
 
         refresher = BrowserCookieRefresher()
-        mocker.patch.object(refresher, "_firefox_profile_roots", return_value=[temp_dir])
+        mocker.patch.object(
+            refresher, "_firefox_profile_roots", return_value=[temp_dir]
+        )
         output_path = temp_dir / "cookies.txt"
 
         with pytest.raises(

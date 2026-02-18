@@ -1,4 +1,4 @@
-"""YTDL-Archiver: Modern YouTube playlist archiver."""
+"""ytdl-archiver: Modern Python CLI for archiving YouTube playlists with media-server-friendly sidecar files"""
 
 from importlib.metadata import PackageNotFoundError, version
 
@@ -7,5 +7,5 @@ try:
 except PackageNotFoundError:
     __version__ = "0+unknown"
 
-__author__ = "Ben Chitty / @htmlgxn"
+__author__ = "Ben Chitty"
 __email__ = "htmlgxn@pm.me"

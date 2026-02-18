@@ -244,12 +244,14 @@ class TestPlaylistArchiver:
             ],
         }
 
-        with patch.object(
-            archiver, "_get_playlist_info", return_value=playlist_with_none
+        with (
+            patch.object(
+                archiver, "_get_playlist_info", return_value=playlist_with_none
+            ),
+            patch.object(config, "get_playlist_config", return_value={}),
         ):
-            with patch.object(config, "get_playlist_config", return_value={}):
             # Should not raise exception
-                archiver.process_playlist("test", "TestPlaylist")
+            archiver.process_playlist("test", "TestPlaylist")
 
     def test_process_playlist_uses_clean_playlist_label(self, config, mocker):
         """Test playlist formatter input does not duplicate Processing prefix."""

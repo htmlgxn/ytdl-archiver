@@ -20,6 +20,8 @@ jobs:
             platform_tag: linux-x86_64
           - runs_on: ubuntu-24.04-arm
             platform_tag: linux-aarch64
+          - runs_on: macos-15-intel
+            platform_tag: macos-x86_64
           - runs_on: macos-14
             platform_tag: macos-aarch64
           - runs_on: windows-latest

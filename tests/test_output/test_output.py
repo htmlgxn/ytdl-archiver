@@ -1,17 +1,16 @@
 """Tests for output formatters."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from ytdl_archiver.output import (
+    Colors,
+    OutputMode,
     ProgressFormatter,
     QuietFormatter,
-    VerboseFormatter,
-    Colors,
     Symbols,
-    OutputMode,
-    get_formatter,
+    VerboseFormatter,
     detect_output_mode,
+    get_formatter,
     should_use_colors,
 )
 

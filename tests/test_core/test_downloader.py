@@ -1,6 +1,6 @@
 """Tests for YouTube downloader functionality."""
 
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -249,7 +249,6 @@ class TestYouTubeDownloader:
     def test_suppress_output_context_manager(self):
         """Test suppress_output context manager."""
         import sys
-        from io import StringIO
 
         # Capture stdout/stderr before
         old_stdout = sys.stdout
@@ -495,8 +494,6 @@ class TestSuppressOutput:
 
     def test_suppress_output_captures_output(self):
         """Test that suppress_output captures stdout and stderr."""
-        import sys
-        from io import StringIO
 
         with suppress_output():
             # Print should not raise
