@@ -328,7 +328,9 @@ base_directory = "/this/path/should/not/exist"
             mock_config.assert_not_called()
             mock_run_setup.assert_called_once_with(config_file)
 
-    @patch("ytdl_archiver.cli.run_setup", side_effect=SetupCancelled("Setup was cancelled"))
+    @patch(
+        "ytdl_archiver.cli.run_setup", side_effect=SetupCancelled("Setup was cancelled")
+    )
     def test_init_cancel_exits_with_cancel_code(self, _mock_run_setup):
         """Test cancelling init setup exits with user-cancel status."""
         with CliRunner().isolated_filesystem() as temp_dir:
@@ -338,7 +340,9 @@ base_directory = "/this/path/should/not/exist"
             assert result.exit_code == 130
             assert "Setup cancelled by user." in result.output
 
-    @patch("ytdl_archiver.cli.run_setup", side_effect=SetupCancelled("Setup was cancelled"))
+    @patch(
+        "ytdl_archiver.cli.run_setup", side_effect=SetupCancelled("Setup was cancelled")
+    )
     def test_missing_config_cancel_exits_with_cancel_code(self, _mock_run_setup):
         """Test cancelling auto first-run setup exits with user-cancel status."""
         with CliRunner().isolated_filesystem() as temp_dir:

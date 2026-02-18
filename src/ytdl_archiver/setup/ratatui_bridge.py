@@ -74,7 +74,9 @@ def _packaged_binary_candidates() -> list[Traversable]:
     os_name = (
         "windows"
         if sys.platform.startswith("win")
-        else "macos" if sys.platform == "darwin" else "linux"
+        else "macos"
+        if sys.platform == "darwin"
+        else "linux"
     )
     machine = platform.machine().lower()
     arch = {
@@ -248,7 +250,9 @@ def _resolve_ratatui_binary(stack: ExitStack) -> Path:
     )
 
 
-def _normalized_answers(payload: dict[str, Any], defaults: SetupAnswers) -> SetupAnswers:
+def _normalized_answers(
+    payload: dict[str, Any], defaults: SetupAnswers
+) -> SetupAnswers:
     cookie_source_raw = str(payload.get("cookie_source", defaults.cookie_source))
     cookie_source: CookieSource = (
         "browser" if cookie_source_raw == "browser" else "manual_file"
@@ -318,7 +322,9 @@ def run_ratatui_setup(defaults: SetupAnswers | None = None) -> SetupAnswers | No
 
             try:
                 parsed = json.loads(raw_output)
-            except json.JSONDecodeError as exc:  # pragma: no cover - defensive parse guard
+            except (
+                json.JSONDecodeError
+            ) as exc:  # pragma: no cover - defensive parse guard
                 raise ValueError(f"Ratatui setup produced invalid JSON: {exc}") from exc
             if not isinstance(parsed, dict):
                 raise TypeError("Ratatui setup output must be a JSON object")

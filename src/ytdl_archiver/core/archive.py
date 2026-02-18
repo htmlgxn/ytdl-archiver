@@ -281,14 +281,18 @@ class PlaylistArchiver:
                     title = metadata.get("title", "Unknown")
 
                     # Generate NFO file
-                    nfo_created = self._generate_nfo_if_needed(metadata, output_directory)
+                    nfo_created = self._generate_nfo_if_needed(
+                        metadata, output_directory
+                    )
 
                     # Mark as downloaded
                     tracker.mark_downloaded(video_id)
 
                     if self.formatter:
                         if nfo_created:
-                            emit_rendered(self.formatter.artifact_complete(title, ".nfo"))
+                            emit_rendered(
+                                self.formatter.artifact_complete(title, ".nfo")
+                            )
                     else:
                         logger.info(
                             "Successfully processed video",
@@ -296,7 +300,13 @@ class PlaylistArchiver:
                             title=title,
                         )
 
-            except (ArchiveError, DownloadError, MetadataError, OSError, ValueError) as e:
+            except (
+                ArchiveError,
+                DownloadError,
+                MetadataError,
+                OSError,
+                ValueError,
+            ) as e:
                 stats["failed"] += 1
                 if self.formatter:
                     emit_rendered(
@@ -447,7 +457,13 @@ class PlaylistArchiver:
                         logger.info("Waiting before next playlist", delay=delay)
                         time.sleep(delay)
 
-            except (ArchiveError, DownloadError, OSError, ValueError, RuntimeError) as e:
+            except (
+                ArchiveError,
+                DownloadError,
+                OSError,
+                ValueError,
+                RuntimeError,
+            ) as e:
                 logger.error(
                     "Failed to process playlist", playlist_id=playlist_id, error=str(e)
                 )

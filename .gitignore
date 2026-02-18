@@ -6,6 +6,7 @@ build/
 *.egg-info/
 .venv/
 .ruff_cache/
+.obsidian
 
 # Agents
 .agents/

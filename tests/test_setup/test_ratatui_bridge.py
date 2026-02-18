@@ -139,7 +139,9 @@ def test_run_ratatui_setup_fails_when_autobuild_disabled(monkeypatch):
         "ytdl_archiver.setup.ratatui_bridge._packaged_binary_candidates",
         lambda: [],
     )
-    monkeypatch.setattr("ytdl_archiver.setup.ratatui_bridge._binary_candidates", lambda: [])
+    monkeypatch.setattr(
+        "ytdl_archiver.setup.ratatui_bridge._binary_candidates", lambda: []
+    )
 
     with pytest.raises(FileNotFoundError, match=r"AUTOBUILD=0"):
         run_ratatui_setup(SetupAnswers())
@@ -185,7 +187,9 @@ def test_run_ratatui_setup_uses_packaged_binary_candidate(monkeypatch, temp_dir)
         "ytdl_archiver.setup.ratatui_bridge._packaged_binary_candidates",
         lambda: [fake_bin],
     )
-    monkeypatch.setattr("ytdl_archiver.setup.ratatui_bridge._binary_candidates", lambda: [])
+    monkeypatch.setattr(
+        "ytdl_archiver.setup.ratatui_bridge._binary_candidates", lambda: []
+    )
     monkeypatch.setattr(
         "ytdl_archiver.setup.ratatui_bridge.resources.as_file",
         lambda candidate: nullcontext(candidate),
@@ -405,7 +409,9 @@ def test_run_ratatui_setup_missing_result_file(monkeypatch, temp_dir):
     monkeypatch.setenv("YTDL_ARCHIVER_SETUP_TUI_BIN", str(fake_bin))
     monkeypatch.setattr(
         "ytdl_archiver.setup.ratatui_bridge.subprocess.run",
-        Mock(return_value=subprocess.CompletedProcess(args=[str(fake_bin)], returncode=0)),
+        Mock(
+            return_value=subprocess.CompletedProcess(args=[str(fake_bin)], returncode=0)
+        ),
     )
     monkeypatch.setattr(
         "ytdl_archiver.setup.ratatui_bridge.tempfile.TemporaryDirectory",

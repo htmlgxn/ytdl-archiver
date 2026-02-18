@@ -2,7 +2,13 @@
 
 Authoritative implementation source: `src/ytdl_archiver/cli.py`.
 
-## Top-level command
+## Invocation
+Installed via tool/pip/script:
+```bash
+ytdl-archiver [OPTIONS] COMMAND [ARGS]...
+```
+
+From source checkout:
 ```bash
 uv run ytdl-archiver [OPTIONS] COMMAND [ARGS]...
 ```
@@ -18,9 +24,14 @@ uv run ytdl-archiver [OPTIONS] COMMAND [ARGS]...
 - `convert-playlists`: convert playlists JSON to TOML
 - `init`: run first-run setup and generate template files
 
+## First-run behavior
+- If `config.toml` is missing and invocation is not a help flow, setup is auto-launched and exits after setup completes.
+- `init` always runs setup directly.
+- Help commands bypass setup.
+
 ## `archive`
 ```bash
-uv run ytdl-archiver archive [OPTIONS]
+ytdl-archiver archive [OPTIONS]
 ```
 
 Options:
@@ -35,16 +46,16 @@ Notes:
 
 ## `convert-playlists`
 ```bash
-uv run ytdl-archiver convert-playlists -i playlists.json -o playlists.toml
+ytdl-archiver convert-playlists -i playlists.json -o playlists.toml
 ```
 
 Options:
-- `-i, --input PATH`: input JSON playlists file
+- `-i, --input PATH`: input JSON playlists file (required in practice)
 - `-o, --output PATH`: output TOML file (default is input path with `.toml` suffix)
 
 ## `init`
 ```bash
-uv run ytdl-archiver init
+ytdl-archiver init
 ```
 
 Runs interactive setup and writes template files:
@@ -60,8 +71,8 @@ Used by setup runtime bridge in `src/ytdl_archiver/setup/ratatui_bridge.py`.
 
 ## Help commands
 ```bash
-UV_CACHE_DIR=.uv-cache uv run ytdl-archiver --help
-UV_CACHE_DIR=.uv-cache uv run ytdl-archiver archive --help
-UV_CACHE_DIR=.uv-cache uv run ytdl-archiver convert-playlists --help
-UV_CACHE_DIR=.uv-cache uv run ytdl-archiver init --help
+ytdl-archiver --help
+ytdl-archiver archive --help
+ytdl-archiver convert-playlists --help
+ytdl-archiver init --help
 ```

@@ -17,7 +17,9 @@ def _platform_tag() -> str:
     os_name = (
         "windows"
         if sys.platform.startswith("win")
-        else "macos" if sys.platform == "darwin" else "linux"
+        else "macos"
+        if sys.platform == "darwin"
+        else "linux"
     )
     machine = platform.machine().lower()
     arch = {

@@ -81,7 +81,9 @@ class TestSetupWriter:
         """Interactive setup uses ratatui answers when available."""
         config_path = temp_dir / "cfg" / "config.toml"
         answers = SetupAnswers(archive_directory=str(temp_dir / "archive"))
-        monkeypatch.setattr("ytdl_archiver.setup.runner.is_interactive_session", lambda: True)
+        monkeypatch.setattr(
+            "ytdl_archiver.setup.runner.is_interactive_session", lambda: True
+        )
         monkeypatch.setattr(
             "ytdl_archiver.setup.runner.run_ratatui_setup",
             lambda _defaults: answers,
@@ -97,7 +99,9 @@ class TestSetupWriter:
     def test_run_setup_interactive_falls_back_to_prompt(self, temp_dir, monkeypatch):
         """Interactive setup falls back to prompt collection on ratatui errors."""
         config_path = temp_dir / "cfg" / "config.toml"
-        monkeypatch.setattr("ytdl_archiver.setup.runner.is_interactive_session", lambda: True)
+        monkeypatch.setattr(
+            "ytdl_archiver.setup.runner.is_interactive_session", lambda: True
+        )
         monkeypatch.setattr(
             "ytdl_archiver.setup.runner.run_ratatui_setup",
             lambda _defaults: (_ for _ in ()).throw(RuntimeError("bridge failed")),
@@ -113,10 +117,14 @@ class TestSetupWriter:
         assert result.ui_error is not None
         assert "bridge failed" in result.ui_error
 
-    def test_run_setup_interactive_cancel_does_not_fallback(self, temp_dir, monkeypatch):
+    def test_run_setup_interactive_cancel_does_not_fallback(
+        self, temp_dir, monkeypatch
+    ):
         """Interactive cancel exits setup flow without prompt fallback."""
         config_path = temp_dir / "cfg" / "config.toml"
-        monkeypatch.setattr("ytdl_archiver.setup.runner.is_interactive_session", lambda: True)
+        monkeypatch.setattr(
+            "ytdl_archiver.setup.runner.is_interactive_session", lambda: True
+        )
         monkeypatch.setattr(
             "ytdl_archiver.setup.runner.run_ratatui_setup",
             lambda _defaults: None,

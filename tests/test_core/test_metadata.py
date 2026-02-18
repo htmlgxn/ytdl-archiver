@@ -1,7 +1,5 @@
 """Tests for metadata generation functionality."""
 
-from pathlib import Path
-
 import pytest
 
 from ytdl_archiver.core.metadata import MetadataGenerator

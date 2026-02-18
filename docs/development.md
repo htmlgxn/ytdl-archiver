@@ -112,6 +112,9 @@ docs/
 rust/
 └── setup_tui/
 
+install.sh
+install.ps1
+
 scripts/
 └── stage_setup_tui_binary.py
 ```
