@@ -128,11 +128,42 @@ class TestProgressFormatter:
         assert "Test Video" in result
         assert "[.srt]" in result
 
+    def test_artifact_complete_with_type(self):
+        """Test artifact completion output with artifact label."""
+        formatter = ProgressFormatter(use_colors=False)
+        result = formatter.artifact_complete("Test Video", ".jpg", "thumbnail")
+        assert "Downloaded:" in result
+        assert "Test Video" in result
+        assert "[thumbnail, .jpg]" in result
+
+    def test_thumbnail_generated(self):
+        """Test thumbnail generated output."""
+        formatter = ProgressFormatter(use_colors=False)
+        result = formatter.thumbnail_generated("Test Video", ".jpg")
+        assert "Thumbnail generated:" in result
+        assert "Test Video" in result
+        assert "[.jpg]" in result
+
+    def test_mp4_generated(self):
+        """Test mp4 generated output with bracket stats."""
+        formatter = ProgressFormatter(use_colors=False)
+        result = formatter.mp4_generated("Test Video", "1080p", "100mb")
+        assert ".mp4 generated:" in result
+        assert "Test Video" in result
+        assert "[1080p, 100mb]" in result
+
     def test_warning(self):
         """Test warning output."""
         formatter = ProgressFormatter(use_colors=False)
         result = formatter.warning("Something went wrong")
         assert "Something went wrong" in result
+
+    def test_already_downloaded(self):
+        """Test already downloaded summary output."""
+        formatter = ProgressFormatter(use_colors=False)
+        result = formatter.already_downloaded(7)
+        assert "Already downloaded:" in result
+        assert "7 videos" in result
 
     def test_error(self):
         """Test error output."""
@@ -145,8 +176,8 @@ class TestProgressFormatter:
         formatter = ProgressFormatter(use_colors=False)
         result = formatter.playlist_summary({"new": 5, "skipped": 2, "failed": 1})
         assert "5" in result
-        assert "2" in result
         assert "1" in result
+        assert "Already downloaded:" not in result
 
     def test_playlist_summary_empty(self):
         """Test playlist summary with no activity."""

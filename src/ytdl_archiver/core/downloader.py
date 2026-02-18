@@ -71,6 +71,9 @@ class SilentYTDLPLogger:
 class ProgressCallback:
     """Progress callback for yt-dlp with formatter integration."""
 
+    THUMBNAIL_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+    INTERMEDIATE_MEDIA_EXTENSIONS = {".webm", ".m4a", ".mp4", ".mkv", ".mov", ".ts"}
+
     def __init__(self, formatter):
         self.formatter = formatter
         self.current_video = None
@@ -162,6 +165,12 @@ class ProgressCallback:
         self._primary_emitted_for_current = False
         self._emitted_artifact_exts = set()
 
+    def _artifact_type_for_extension(self, extension: str) -> str:
+        """Map known extension types to readable artifact labels."""
+        if extension in self.THUMBNAIL_EXTENSIONS:
+            return "thumbnail"
+        return ""
+
     def __call__(self, d: dict[str, Any]) -> None:
         """Handle yt-dlp progress callback."""
         if d["status"] == "downloading" and self.formatter:
@@ -224,8 +233,16 @@ class ProgressCallback:
                 )
                 emit_rendered(complete_msg)
                 self._primary_emitted_for_current = True
-            elif extension and extension not in self._emitted_artifact_exts:
-                complete_msg = self.formatter.artifact_complete(title, extension)
+            elif (
+                extension
+                and extension not in self._emitted_artifact_exts
+                and extension not in self.INTERMEDIATE_MEDIA_EXTENSIONS
+                and extension not in self.THUMBNAIL_EXTENSIONS
+            ):
+                artifact_type = self._artifact_type_for_extension(extension)
+                complete_msg = self.formatter.artifact_complete(
+                    title, extension, artifact_type
+                )
                 emit_rendered(complete_msg)
                 self._emitted_artifact_exts.add(extension)
 
@@ -237,6 +254,81 @@ class YouTubeDownloader:
         self.config = config
         self.formatter = formatter
         self.ydl_opts = self._build_ydl_options()
+
+    @staticmethod
+    def _format_size_from_bytes(total_bytes: int) -> str:
+        """Format bytes to mb/gb with requested precision rules."""
+        if total_bytes <= 0:
+            return ""
+
+        gib = 1024**3
+        mib = 1024**2
+
+        if total_bytes >= gib:
+            gb_value = total_bytes / gib
+            formatted = f"{gb_value:.2f}".rstrip("0").rstrip(".")
+            return f"{formatted}gb"
+
+        mb_value = max(1, round(total_bytes / mib))
+        return f"{int(mb_value)}mb"
+
+    @staticmethod
+    def _extract_resolution_from_metadata(metadata: dict[str, Any] | None) -> str:
+        """Extract display resolution from metadata."""
+        if not metadata:
+            return ""
+        height = metadata.get("height")
+        width = metadata.get("width")
+        if height and width:
+            return f"{height}p"
+        return ""
+
+    @staticmethod
+    def _extract_title(
+        download_result: dict[str, Any] | None, metadata: dict[str, Any] | None
+    ) -> str:
+        """Extract best available title."""
+        if download_result and download_result.get("title"):
+            return str(download_result["title"])
+        if metadata and metadata.get("title"):
+            return str(metadata["title"])
+        return "Unknown"
+
+    @staticmethod
+    def _first_existing_thumbnail(
+        output_directory: Path, filename: str
+    ) -> tuple[Path, str] | None:
+        """Find the first thumbnail file generated for a video."""
+        thumbnail_extensions = (".jpg", ".jpeg", ".png", ".webp", ".gif")
+        for extension in thumbnail_extensions:
+            candidate = output_directory / f"{filename}{extension}"
+            if candidate.exists():
+                return candidate, extension
+        return None
+
+    def _emit_post_download_generated_lines(
+        self,
+        output_directory: Path,
+        filename: str,
+        download_result: dict[str, Any] | None,
+        metadata: dict[str, Any] | None,
+    ) -> None:
+        """Emit generated artifact lines based on actual files on disk."""
+        if not self.formatter:
+            return
+
+        title = self._extract_title(download_result, metadata)
+        resolution = self._extract_resolution_from_metadata(download_result or metadata)
+
+        thumbnail = self._first_existing_thumbnail(output_directory, filename)
+        if thumbnail is not None:
+            _, thumbnail_ext = thumbnail
+            emit_rendered(self.formatter.thumbnail_generated(title, thumbnail_ext))
+
+        mp4_path = output_directory / f"{filename}.mp4"
+        if mp4_path.exists():
+            mp4_size = self._format_size_from_bytes(mp4_path.stat().st_size)
+            emit_rendered(self.formatter.mp4_generated(title, resolution, mp4_size))
 
     def _build_ydl_options(
         self, playlist_config: dict[str, Any] = None
@@ -500,13 +592,17 @@ class YouTubeDownloader:
         if delay > 0:
             time.sleep(delay)
 
-        return self._download_with_effective_config(
+        download_result = self._download_with_effective_config(
             video_url,
             output_template,
             output_directory,
             filename,
             playlist_config,
         )
+        self._emit_post_download_generated_lines(
+            output_directory, filename, download_result, metadata
+        )
+        return download_result
 
     def download_video_with_config_impl(
         self,

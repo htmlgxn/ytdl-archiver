@@ -316,7 +316,7 @@ class TestProgressCallback:
         formatter.video_complete.assert_called_once_with(
             "Sample Video", "1080p", ".mp4", "100mb"
         )
-        formatter.artifact_complete.assert_called_once_with("Sample Video", ".srt")
+        formatter.artifact_complete.assert_called_once_with("Sample Video", ".srt", "")
         emitted = [call.args[0] for call in emit.call_args_list]
         assert emitted.count("main-line") == 1
         assert emitted.count("sidecar-line") == 1
@@ -366,6 +366,128 @@ class TestProgressCallback:
         formatter.video_complete.assert_called_once_with(
             "Big Video", "", ".mp4", "1.25gb"
         )
+
+    def test_thumbnail_artifact_is_not_emitted_as_sidecar(self):
+        """Test thumbnail artifacts are no longer emitted as Downloaded sidecars."""
+        formatter = Mock()
+        formatter.video_complete.return_value = "main-line"
+        callback = ProgressCallback(formatter)
+
+        with patch("ytdl_archiver.core.downloader.emit_rendered"):
+            callback(
+                {
+                    "status": "finished",
+                    "filename": "/tmp/video.mp4",
+                    "info_dict": {"title": "Video", "ext": "mp4"},
+                }
+            )
+            callback(
+                {
+                    "status": "finished",
+                    "filename": "/tmp/video.jpg",
+                    "info_dict": {"title": "Video", "ext": "jpg"},
+                }
+            )
+
+        formatter.artifact_complete.assert_not_called()
+
+    def test_intermediate_webm_artifact_is_ignored(self):
+        """Test intermediate media artifacts are not emitted as sidecars."""
+        formatter = Mock()
+        formatter.video_complete.return_value = "main-line"
+        callback = ProgressCallback(formatter)
+
+        with patch("ytdl_archiver.core.downloader.emit_rendered"):
+            callback(
+                {
+                    "status": "finished",
+                    "filename": "/tmp/video.mp4",
+                    "info_dict": {"title": "Video", "ext": "mp4"},
+                }
+            )
+            callback(
+                {
+                    "status": "finished",
+                    "filename": "/tmp/video.webm",
+                    "info_dict": {"title": "Video", "ext": "webm"},
+                }
+            )
+
+        formatter.artifact_complete.assert_not_called()
+
+    def test_download_video_with_config_emits_generated_lines(
+        self, config, temp_dir, mocker
+    ):
+        """Test post-download generated lines for thumbnail and final mp4."""
+        config._config["archive"]["delay_between_videos"] = 0
+        downloader = YouTubeDownloader(config, formatter=Mock())
+        downloader.formatter.thumbnail_generated.return_value = "thumbnail-line"
+        downloader.formatter.mp4_generated.return_value = "mp4-line"
+
+        metadata = {"title": "Test Video", "width": 1920, "height": 1080}
+        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
+        mocker.patch.object(
+            downloader,
+            "_download_with_effective_config",
+            return_value={"title": "Test Video", "width": 1920, "height": 1080},
+        )
+
+        filename = downloader._build_output_filename(
+            metadata, "https://www.youtube.com/watch?v=test_video"
+        )
+        (temp_dir / f"{filename}.jpg").write_bytes(b"thumb")
+        (temp_dir / f"{filename}.mp4").write_bytes(b"x" * (5 * 1024 * 1024))
+
+        with patch("ytdl_archiver.core.downloader.emit_rendered") as emit:
+            downloader.download_video_with_config(
+                "https://www.youtube.com/watch?v=test_video",
+                temp_dir,
+                None,
+            )
+
+        downloader.formatter.thumbnail_generated.assert_called_once_with(
+            "Test Video", ".jpg"
+        )
+        downloader.formatter.mp4_generated.assert_called_once_with(
+            "Test Video", "1080p", "5mb"
+        )
+        emitted = [call.args[0] for call in emit.call_args_list]
+        assert "thumbnail-line" in emitted
+        assert "mp4-line" in emitted
+
+    def test_download_video_with_config_emits_mp4_generated_only_when_mp4_exists(
+        self, config, temp_dir, mocker
+    ):
+        """Test mp4 generated line is skipped when no final mp4 exists."""
+        config._config["archive"]["delay_between_videos"] = 0
+        downloader = YouTubeDownloader(config, formatter=Mock())
+        downloader.formatter.thumbnail_generated.return_value = "thumbnail-line"
+        downloader.formatter.mp4_generated.return_value = "mp4-line"
+
+        metadata = {"title": "Test Video", "width": 1920, "height": 1080}
+        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
+        mocker.patch.object(
+            downloader,
+            "_download_with_effective_config",
+            return_value={"title": "Test Video", "width": 1920, "height": 1080},
+        )
+
+        filename = downloader._build_output_filename(
+            metadata, "https://www.youtube.com/watch?v=test_video"
+        )
+        (temp_dir / f"{filename}.jpg").write_bytes(b"thumb")
+
+        with patch("ytdl_archiver.core.downloader.emit_rendered"):
+            downloader.download_video_with_config(
+                "https://www.youtube.com/watch?v=test_video",
+                temp_dir,
+                None,
+            )
+
+        downloader.formatter.thumbnail_generated.assert_called_once_with(
+            "Test Video", ".jpg"
+        )
+        downloader.formatter.mp4_generated.assert_not_called()
 
 
 class TestSuppressOutput:

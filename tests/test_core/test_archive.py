@@ -78,6 +78,50 @@ class TestArchiveTracker:
         assert "video2" in tracker.downloaded_videos
         assert "video3" in tracker.downloaded_videos
 
+    def test_load_archive_with_legacy_two_token_lines(self, temp_dir):
+        """Test loading archive with legacy two-token formats."""
+        archive_file = temp_dir / ".archive.txt"
+        archive_file.write_text("youtube abc123\nyoutube def456\n")
+
+        tracker = ArchiveTracker(archive_file)
+
+        assert tracker.is_downloaded("abc123") is True
+        assert tracker.is_downloaded("def456") is True
+        assert len(tracker.downloaded_videos) == 2
+
+    def test_load_archive_with_url_lines(self, temp_dir):
+        """Test loading archive with URL-based lines."""
+        archive_file = temp_dir / ".archive.txt"
+        archive_file.write_text(
+            "https://www.youtube.com/watch?v=abc123\n"
+            "https://youtu.be/def456\n"
+            "https://www.youtube.com/shorts/ghi789\n"
+        )
+
+        tracker = ArchiveTracker(archive_file)
+
+        assert tracker.is_downloaded("abc123") is True
+        assert tracker.is_downloaded("def456") is True
+        assert tracker.is_downloaded("ghi789") is True
+        assert len(tracker.downloaded_videos) == 3
+
+    def test_load_archive_with_mixed_legacy_and_raw_lines(self, temp_dir):
+        """Test loading archive with mixed legacy and raw id lines."""
+        archive_file = temp_dir / ".archive.txt"
+        archive_file.write_text(
+            "rawid001\n"
+            "youtube rawid002\n"
+            "https://www.youtube.com/watch?v=rawid003\n"
+            "# comment line\n"
+        )
+
+        tracker = ArchiveTracker(archive_file)
+
+        assert tracker.is_downloaded("rawid001") is True
+        assert tracker.is_downloaded("rawid002") is True
+        assert tracker.is_downloaded("rawid003") is True
+        assert len(tracker.downloaded_videos) == 3
+
     def test_mark_downloaded_duplicate(self, archive_tracker):
         """Test marking already downloaded video."""
         archive_tracker.downloaded_videos = {"video1"}
@@ -279,6 +323,111 @@ class TestPlaylistArchiver:
 
         formatter.artifact_complete.assert_called_once_with("Video 1", ".nfo")
         formatter.video_complete.assert_not_called()
+
+    def test_process_playlist_emits_aggregated_already_downloaded_once(
+        self, config, temp_dir, mocker
+    ):
+        """Test skipped videos are summarized in one line instead of per-video spam."""
+        config._config["archive"]["base_directory"] = str(temp_dir)
+        formatter = Mock()
+        formatter.playlist_start.return_value = "playlist-start"
+        formatter.playlist_summary.return_value = "playlist-summary"
+        formatter.already_downloaded.return_value = "already-downloaded-summary"
+        formatter.warning.return_value = "warn-line"
+
+        archiver = PlaylistArchiver(config, formatter=formatter)
+        mocker.patch.object(
+            archiver,
+            "_get_playlist_info",
+            return_value={
+                "entries": [
+                    {"id": "video1", "title": "Video 1"},
+                    {"id": "video2", "title": "Video 2"},
+                ]
+            },
+        )
+
+        playlist_dir = temp_dir / "PlaylistPath"
+        playlist_dir.mkdir(parents=True, exist_ok=True)
+        archive_file = playlist_dir / ".archive.txt"
+        archive_file.write_text("video1\nvideo2\n")
+
+        with patch("ytdl_archiver.core.archive.emit_rendered") as emit:
+            archiver.process_playlist("playlist-id", "PlaylistPath")
+
+        formatter.playlist_summary.assert_called_once_with(
+            {"new": 0, "skipped": 2, "failed": 0}
+        )
+        formatter.already_downloaded.assert_called_once_with(2)
+        formatter.warning.assert_not_called()
+        emitted = [call.args[0] for call in emit.call_args_list]
+        assert "already-downloaded-summary" in emitted
+        assert "playlist-summary" in emitted
+
+    def test_process_playlist_emits_archive_total_when_skips_zero(
+        self, config, temp_dir, mocker
+    ):
+        """Test already-downloaded line uses archive total, not run-time skipped count."""
+        config._config["archive"]["base_directory"] = str(temp_dir)
+        formatter = Mock()
+        formatter.playlist_start.return_value = "playlist-start"
+        formatter.playlist_summary.return_value = "playlist-summary"
+        formatter.already_downloaded.return_value = "already-downloaded-summary"
+        formatter.artifact_complete.return_value = "nfo-sidecar"
+
+        archiver = PlaylistArchiver(config, formatter=formatter)
+        mocker.patch.object(
+            archiver,
+            "_get_playlist_info",
+            return_value={"entries": [{"id": "new-video-id", "title": "New Video"}]},
+        )
+        mocker.patch.object(config, "get_playlist_config", return_value={})
+        mocker.patch.object(
+            archiver.downloader,
+            "download_video_with_config",
+            return_value={"title": "New Video"},
+        )
+        mocker.patch.object(archiver, "_generate_nfo_if_needed", return_value=False)
+
+        playlist_dir = temp_dir / "PlaylistPath"
+        playlist_dir.mkdir(parents=True, exist_ok=True)
+        archive_file = playlist_dir / ".archive.txt"
+        archive_file.write_text("legacy-id-1\nlegacy-id-2\nlegacy-id-3\n")
+
+        with patch("ytdl_archiver.core.archive.emit_rendered") as emit:
+            archiver.process_playlist("playlist-id", "PlaylistPath")
+
+        formatter.playlist_summary.assert_called_once_with(
+            {"new": 1, "skipped": 0, "failed": 0}
+        )
+        formatter.already_downloaded.assert_called_once_with(3)
+        emitted = [call.args[0] for call in emit.call_args_list]
+        assert "already-downloaded-summary" in emitted
+        assert "playlist-summary" in emitted
+
+    def test_process_playlist_skips_already_downloaded_when_archive_total_zero(
+        self, config, temp_dir, mocker
+    ):
+        """Test already-downloaded line is not emitted when archive file is empty."""
+        config._config["archive"]["base_directory"] = str(temp_dir)
+        formatter = Mock()
+        formatter.playlist_start.return_value = "playlist-start"
+        formatter.playlist_summary.return_value = "playlist-summary"
+
+        archiver = PlaylistArchiver(config, formatter=formatter)
+        mocker.patch.object(
+            archiver, "_get_playlist_info", return_value={"entries": []}
+        )
+
+        playlist_dir = temp_dir / "PlaylistPath"
+        playlist_dir.mkdir(parents=True, exist_ok=True)
+        archive_file = playlist_dir / ".archive.txt"
+        archive_file.write_text("")
+
+        with patch("ytdl_archiver.core.archive.emit_rendered"):
+            archiver.process_playlist("playlist-id", "PlaylistPath")
+
+        formatter.already_downloaded.assert_not_called()
 
     def test_run_refreshes_cookies_before_start_and_each_playlist(
         self, config, temp_dir, mocker
