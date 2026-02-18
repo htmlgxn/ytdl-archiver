@@ -14,6 +14,7 @@ Modern Python CLI for archiving YouTube playlists with media-server-friendly sid
 - Python 3.14+
 - [`uv`](https://docs.astral.sh/uv/)
 - FFmpeg available on PATH
+- Rust toolchain (`cargo`) for building the setup wizard in development
 
 ## Install
 ```bash
@@ -33,9 +34,33 @@ If `config.toml` is missing, setup runs automatically on any non-help invocation
 - `~/.config/ytdl-archiver/config.toml`
 - `~/.config/ytdl-archiver/playlists.toml`
 
+Interactive setup uses a Rust `ratatui` wizard with a centered one-page progressive form.
+Inactive sections stay visible in dim mode and light up as you advance.
+On small terminals, setup automatically falls back to paged step-by-step rendering.
+Keyboard controls:
+- `j/k` or arrow keys: move
+- `Enter`: confirm / next
+- `b`: back
+- `Esc` / `q`: cancel
+
+If the Rust setup binary is unavailable, setup falls back to prompt-based questions.
+If setup runs in a non-interactive environment (stdin/stdout not TTY), it uses defaults and reports that in the summary.
+
 You can also run setup explicitly:
 ```bash
 uv run ytdl-archiver init
+```
+
+Build the Rust setup binary (required for ratatui setup mode):
+```bash
+cargo build --manifest-path rust/setup_tui/Cargo.toml --release
+```
+
+`cargo run` without setup files will fail by design. For manual wizard dev runs, pass both file arguments:
+```bash
+cargo run --manifest-path rust/setup_tui/Cargo.toml -- \
+  --defaults /tmp/defaults.json \
+  --result /tmp/result.json
 ```
 
 ### 2. Define playlists
@@ -128,6 +153,11 @@ uv run ytdl-archiver convert-playlists -i playlists.json -o playlists.toml
 ### `init`
 ```bash
 uv run ytdl-archiver -c /path/to/config.toml init
+```
+
+Override setup binary path (optional):
+```bash
+YTDL_ARCHIVER_SETUP_TUI_BIN=/path/to/ytdl-archiver-setup-tui uv run ytdl-archiver init
 ```
 
 ## Configuration Reference

@@ -1,7 +1,6 @@
 """Setup orchestration entry points."""
 
 from pathlib import Path
-from typing import Never
 
 from .fallback_prompts import (
     collect_non_interactive_answers,
@@ -9,34 +8,34 @@ from .fallback_prompts import (
     is_interactive_session,
 )
 from .models import SetupAnswers, SetupRunResult
+from .ratatui_bridge import run_ratatui_setup
 from .writer import write_setup_files
 
 
-def _raise_setup_cancelled() -> Never:
-    raise RuntimeError("Setup was cancelled")
+class SetupCancelled(RuntimeError):
+    """Raised when the user cancels setup intentionally."""
 
 
-def run_setup(config_path: Path, prefer_textual: bool = True) -> SetupRunResult:
+def run_setup(config_path: Path, prefer_ratatui: bool = True) -> SetupRunResult:
     """Run first-run setup and write generated files."""
     defaults = SetupAnswers()
-    textual_error: str | None = None
+    ui_error: str | None = None
 
     if not is_interactive_session():
         answers = collect_non_interactive_answers(defaults)
         ui_mode = "non_interactive"
-    elif prefer_textual:
+    elif prefer_ratatui:
         try:
-            from .textual_app import run_textual_setup
-
-            textual_answers = run_textual_setup(defaults)
-            if textual_answers is None:
-                _raise_setup_cancelled()
-            answers = textual_answers
-            ui_mode = "textual"
-        except (ImportError, OSError, RuntimeError, ValueError) as exc:
-            textual_error = str(exc)
+            ratatui_answers = run_ratatui_setup(defaults)
+        except (ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
+            ui_error = str(exc)
             answers = collect_prompt_answers(defaults)
             ui_mode = "prompt"
+        else:
+            if ratatui_answers is None:
+                raise SetupCancelled("Setup was cancelled")
+            answers = ratatui_answers
+            ui_mode = "ratatui"
     else:
         answers = collect_prompt_answers(defaults)
         ui_mode = "prompt"
@@ -46,7 +45,7 @@ def run_setup(config_path: Path, prefer_textual: bool = True) -> SetupRunResult:
         answers=answers,
         write_result=write_result,
         ui_mode=ui_mode,
-        textual_error=textual_error,
+        ui_error=ui_error,
     )
 
 
@@ -76,9 +75,15 @@ def render_setup_summary(result: SetupRunResult) -> list[str]:
         "Help: uv run ytdl-archiver --help",
     ]
 
-    if result.textual_error:
+    if result.ui_mode == "non_interactive":
         lines.insert(
             2,
-            f"Textual UI unavailable, used prompt fallback: {result.textual_error}",
+            "Interactive setup skipped (stdin/stdout not TTY); defaults were applied.",
+        )
+
+    if result.ui_error:
+        lines.insert(
+            2,
+            f"Ratatui UI unavailable, used prompt fallback: {result.ui_error}",
         )
     return lines

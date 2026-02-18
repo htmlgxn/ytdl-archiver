@@ -49,6 +49,19 @@ uv run ytdl-archiver archive
 ```
 when `~/.config/ytdl-archiver/config.toml` does not exist.
 
+First-run setup now uses a Rust `ratatui` wizard (one step per screen).
+If the setup binary is missing or fails, CLI prompt fallback is used automatically.
+Build the setup binary before first use:
+```bash
+cargo build --manifest-path rust/setup_tui/Cargo.toml --release
+```
+
+Keyboard controls in the wizard:
+- `j/k` or arrows: move
+- `Enter`: confirm / next
+- `b`: back
+- `Esc` / `q`: cancel
+
 ### Step 3: Move/convert playlists
 Option A (recommended): convert legacy JSON to TOML.
 ```bash

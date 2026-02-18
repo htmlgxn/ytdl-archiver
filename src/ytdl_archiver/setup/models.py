@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal
 
 CookieSource = Literal["manual_file", "browser"]
-SetupUiMode = Literal["textual", "prompt", "non_interactive"]
+SetupUiMode = Literal["ratatui", "prompt", "non_interactive"]
 
 DEFAULT_ARCHIVE_DIRECTORY = "~/Videos/media/youtube/"
 DEFAULT_COOKIE_BROWSER = "firefox"
@@ -43,4 +43,4 @@ class SetupRunResult:
     answers: SetupAnswers
     write_result: SetupWriteResult
     ui_mode: SetupUiMode
-    textual_error: str | None = None
+    ui_error: str | None = None
