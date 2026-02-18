@@ -23,7 +23,8 @@ class TestCLI:
         assert result.exit_code == 0
         assert "Usage:" in result.output
         assert "archive" in result.output
-        assert "init-config" in result.output
+        assert "init" in result.output
+        assert "init-config" not in result.output
         assert "convert-playlists" in result.output
 
     def test_cli_version(self):
@@ -42,16 +43,21 @@ class TestCLI:
 
         # Create a temporary directory for testing
         with CliRunner().isolated_filesystem() as temp_dir:
-            # Create a playlists file to avoid the error
-            playlists_file = Path(temp_dir) / "playlists.toml"
-            playlists_file.write_text('[[playlists]]\nid = "test"\npath = "test"')
-
-            result = self.runner.invoke(
-                cli, ["--config", str(Path(temp_dir) / "config.toml"), "archive"]
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text(
+                f"""
+[archive]
+base_directory = "{temp_dir}/downloads"
+"""
             )
 
-            # Check that the command ran (either succeeded or showed expected error)
-            assert "ytdl-archiver" in result.output.lower() or result.exit_code != 0
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "archive"],
+            )
+
+            assert result.exit_code == 0
+            assert "ytdl-archiver" in result.output.lower()
 
     @patch("ytdl_archiver.cli.BrowserCookieRefresher")
     @patch("ytdl_archiver.cli.PlaylistArchiver")
@@ -161,7 +167,9 @@ base_directory = "/this/path/should/not/exist"
 
     @patch("ytdl_archiver.cli.PlaylistArchiver")
     @patch("ytdl_archiver.cli.Config")
-    def test_archive_header_uses_package_version(self, mock_config_class, mock_archiver):
+    def test_archive_header_uses_package_version(
+        self, mock_config_class, mock_archiver
+    ):
         """Test archive header includes package __version__."""
         with CliRunner().isolated_filesystem() as temp_dir:
             config_file = Path(temp_dir) / "config.toml"
@@ -187,37 +195,143 @@ base_directory = "/this/path/should/not/exist"
 
     def test_invalid_command(self):
         """Test invalid CLI command."""
-        result = self.runner.invoke(cli, ["invalid-command"])
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text("")
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "invalid-command"],
+            )
 
         assert result.exit_code != 0
 
     def test_multiple_positional_args(self):
         """Test multiple positional arguments."""
-        result = self.runner.invoke(
-            cli,
-            [
-                "archive",
-                "init-config",  # Multiple commands
-            ],
-        )
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text("")
+            result = self.runner.invoke(
+                cli,
+                [
+                    "--config",
+                    str(config_file),
+                    "archive",
+                    "init",  # Multiple commands
+                ],
+            )
 
         assert result.exit_code != 0
 
-    def test_config_flag_with_no_command(self):
-        """Test config flag without command."""
-        result = self.runner.invoke(cli, ["--config", "/config.toml"])
+    def test_no_command_missing_config_runs_setup(self):
+        """Test no-command first run triggers setup and exits successfully."""
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "cfg" / "config.toml"
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file)],
+                env={"HOME": temp_dir},
+            )
 
-        assert result.exit_code != 0
+            assert result.exit_code == 0
+            assert "first-run setup complete" in result.output
+            assert config_file.exists()
+
+    def test_archive_missing_config_runs_setup(self):
+        """Test non-help command with missing config runs setup first."""
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "cfg" / "config.toml"
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "archive"],
+                env={"HOME": temp_dir},
+            )
+
+            assert result.exit_code == 0
+            assert "first-run setup complete" in result.output
+            assert config_file.exists()
+            assert (config_file.parent / "playlists.toml").exists()
+
+    def test_help_bypasses_first_run_setup(self):
+        """Test help output does not trigger setup generation."""
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "cfg" / "config.toml"
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "--help"],
+            )
+
+            assert result.exit_code == 0
+            assert "Usage:" in result.output
+            assert not config_file.exists()
 
     def test_verbose_flag_with_invalid_command(self):
         """Test verbose flag with invalid command."""
-        result = self.runner.invoke(cli, ["--verbose", "invalid-command"])
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text("")
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "--verbose", "invalid-command"],
+            )
 
         assert result.exit_code != 0
 
     def test_cli_empty_args(self):
-        """Test CLI with no arguments - should show help."""
-        result = self.runner.invoke(cli, [])
+        """Test CLI empty invocation can run first-run setup with custom config path."""
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "cfg" / "config.toml"
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file)],
+                env={"HOME": temp_dir},
+            )
 
-        # Should show help or exit with error
-        assert result.exit_code != 0 or "help" in result.output.lower()
+            assert result.exit_code == 0
+            assert "first-run setup complete" in result.output
+
+    @patch("ytdl_archiver.cli.BrowserCookieRefresher")
+    @patch("ytdl_archiver.cli.PlaylistArchiver")
+    @patch("ytdl_archiver.cli.Config")
+    def test_archive_uses_persisted_cookie_settings(
+        self,
+        mock_config_class,
+        mock_archiver,
+        mock_cookie_refresher_class,
+    ):
+        """Test archive refreshes cookies using persisted setup settings."""
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text("")
+
+            mock_config = Mock()
+            mock_config.validate.return_value = None
+            mock_config.ensure_playlists_file.return_value = None
+            mock_config.as_dict.return_value = {"logging": {"level": "INFO"}}
+            mock_config.migrate_playlists_from_cwd.return_value = None
+            mock_config.get_cookie_file_target_path.return_value = (
+                Path(temp_dir) / "cookies.txt"
+            )
+            mock_config.get.side_effect = lambda key, default=None: {
+                "cookies.source": "browser",
+                "cookies.refresh_on_startup": True,
+                "cookies.browser": "firefox",
+                "cookies.profile": "default-release",
+            }.get(key, default)
+            mock_config_class.return_value = mock_config
+
+            mock_archiver_instance = Mock()
+            mock_archiver.return_value = mock_archiver_instance
+            cookie_refresher = Mock()
+            mock_cookie_refresher_class.return_value = cookie_refresher
+
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "archive"],
+            )
+
+            assert result.exit_code == 0
+            cookie_refresher.refresh_to_file.assert_called_once_with(
+                "firefox",
+                "default-release",
+                Path(temp_dir) / "cookies.txt",
+            )

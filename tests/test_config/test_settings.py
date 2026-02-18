@@ -151,7 +151,9 @@ class TestConfig:
         config_file = temp_config_dir / "config.toml"
         config_file.write_text("")
         playlists_file = temp_config_dir / "playlists.toml"
-        playlists_file.write_text('[[playlists]]\nid = "default_playlist"\npath = "A"\n')
+        playlists_file.write_text(
+            '[[playlists]]\nid = "default_playlist"\npath = "A"\n'
+        )
 
         config = Config(config_file)
         playlist_config = config.get_playlist_config("default_playlist")
@@ -246,6 +248,61 @@ class TestConfig:
         config = Config(config_file)
         assert config.get("archive.delay_between_videos") == -1
         assert config.get("archive.max_retries") == "not_a_number"
+
+    def test_validate_rejects_invalid_cookie_source(self, temp_config_dir, temp_dir):
+        """Test cookies.source validation rejects unsupported values."""
+        config_file = temp_config_dir / "config.toml"
+        config_file.write_text(
+            f"""
+[archive]
+base_directory = "{temp_dir}/downloads"
+
+[cookies]
+source = "invalid_source"
+"""
+        )
+
+        config = Config(config_file)
+        with pytest.raises(ConfigurationError, match="Invalid cookies.source"):
+            config.validate()
+
+    def test_validate_rejects_invalid_cookie_browser(self, temp_config_dir, temp_dir):
+        """Test browser mode requires a supported browser value."""
+        config_file = temp_config_dir / "config.toml"
+        config_file.write_text(
+            f"""
+[archive]
+base_directory = "{temp_dir}/downloads"
+
+[cookies]
+source = "browser"
+browser = "netscape"
+refresh_on_startup = true
+"""
+        )
+
+        config = Config(config_file)
+        with pytest.raises(ConfigurationError, match="Invalid cookies.browser"):
+            config.validate()
+
+    def test_validate_accepts_browser_cookie_settings(self, temp_config_dir, temp_dir):
+        """Test valid persisted cookie refresh settings pass validation."""
+        config_file = temp_config_dir / "config.toml"
+        config_file.write_text(
+            f"""
+[archive]
+base_directory = "{temp_dir}/downloads"
+
+[cookies]
+source = "browser"
+browser = "firefox"
+profile = "default"
+refresh_on_startup = true
+"""
+        )
+
+        config = Config(config_file)
+        config.validate()
 
     def test_config_file_permissions(self, temp_config_dir):
         """Test handling of unreadable config files."""
