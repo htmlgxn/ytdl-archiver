@@ -16,7 +16,7 @@ class SetupAnswers:
     """Collected setup values used to render template files."""
 
     archive_directory: str = DEFAULT_ARCHIVE_DIRECTORY
-    cookie_source: CookieSource = "manual_file"
+    cookie_source: CookieSource = "browser"
     cookie_browser: str = DEFAULT_COOKIE_BROWSER
     cookie_profile: str = ""
     write_subtitles: bool = True

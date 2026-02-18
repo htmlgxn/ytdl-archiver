@@ -19,7 +19,7 @@ impl Default for SetupAnswers {
     fn default() -> Self {
         Self {
             archive_directory: "~/Videos/media/youtube/".to_string(),
-            cookie_source: "manual_file".to_string(),
+            cookie_source: "browser".to_string(),
             cookie_browser: "firefox".to_string(),
             cookie_profile: String::new(),
             write_subtitles: true,
@@ -43,5 +43,17 @@ impl SetupAnswers {
         if self.cookie_source != "browser" {
             self.cookie_profile.clear();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SetupAnswers;
+
+    #[test]
+    fn defaults_prefer_browser_cookie_source() {
+        let answers = SetupAnswers::default();
+        assert_eq!(answers.cookie_source, "browser");
+        assert_eq!(answers.cookie_browser, "firefox");
     }
 }

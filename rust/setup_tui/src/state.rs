@@ -156,25 +156,25 @@ impl WizardState {
             format!(
                 "{} Download subtitles",
                 if self.answers.write_subtitles {
-                    "●"
+                    "◈"
                 } else {
-                    "○"
+                    "◇"
                 }
             ),
             format!(
                 "{} Download thumbnails",
                 if self.answers.write_thumbnail {
-                    "●"
+                    "◈"
                 } else {
-                    "○"
+                    "◇"
                 }
             ),
             format!(
                 "{} Generate NFO metadata",
                 if self.answers.generate_nfo {
-                    "●"
+                    "◈"
                 } else {
-                    "○"
+                    "◇"
                 }
             ),
         ]
@@ -377,6 +377,7 @@ mod tests {
     fn visibility_skips_browser_steps_for_manual_source() {
         let mut state = WizardState::new(SetupAnswers::default());
         state.handle_key(key(KeyCode::Enter));
+        state.handle_key(key(KeyCode::Down));
         state.handle_key(key(KeyCode::Enter));
         assert_eq!(state.step(), Step::DownloadDefaults);
     }
@@ -385,7 +386,6 @@ mod tests {
     fn browser_flow_includes_browser_and_profile_steps() {
         let mut state = WizardState::new(SetupAnswers::default());
         state.handle_key(key(KeyCode::Enter));
-        state.handle_key(key(KeyCode::Up));
         state.handle_key(key(KeyCode::Enter));
         assert_eq!(state.step(), Step::CookieBrowser);
         state.handle_key(key(KeyCode::Enter));
@@ -393,18 +393,24 @@ mod tests {
     }
 
     #[test]
-    fn defaults_toggle_uses_circle_semantics() {
-        let mut state = WizardState::new(SetupAnswers::default());
+    fn defaults_toggle_uses_diamond_semantics() {
+        let mut state = WizardState::new(SetupAnswers {
+            cookie_source: "manual_file".to_string(),
+            ..SetupAnswers::default()
+        });
         state.handle_key(key(KeyCode::Enter));
         state.handle_key(key(KeyCode::Enter));
         state.handle_key(key(KeyCode::Char(' ')));
         assert!(!state.answers.write_subtitles);
-        assert!(state.default_items()[0].starts_with("○"));
+        assert!(state.default_items()[0].starts_with("◇"));
     }
 
     #[test]
     fn review_confirm_submits_answers() {
-        let mut state = WizardState::new(SetupAnswers::default());
+        let mut state = WizardState::new(SetupAnswers {
+            cookie_source: "manual_file".to_string(),
+            ..SetupAnswers::default()
+        });
         state.handle_key(key(KeyCode::Enter));
         state.handle_key(key(KeyCode::Enter));
         state.handle_key(key(KeyCode::Enter));
@@ -419,7 +425,10 @@ mod tests {
 
     #[test]
     fn section_state_marks_future_steps_locked_until_reached() {
-        let mut state = WizardState::new(SetupAnswers::default());
+        let mut state = WizardState::new(SetupAnswers {
+            cookie_source: "manual_file".to_string(),
+            ..SetupAnswers::default()
+        });
         assert_eq!(
             state.section_state(Step::DownloadDefaults),
             SectionState::Locked
@@ -434,7 +443,10 @@ mod tests {
 
     #[test]
     fn section_state_marks_browser_sections_disabled_for_manual_source() {
-        let mut state = WizardState::new(SetupAnswers::default());
+        let mut state = WizardState::new(SetupAnswers {
+            cookie_source: "manual_file".to_string(),
+            ..SetupAnswers::default()
+        });
         state.handle_key(key(KeyCode::Enter));
         state.handle_key(key(KeyCode::Enter));
         assert_eq!(
@@ -445,5 +457,14 @@ mod tests {
             state.section_state(Step::CookieProfile),
             SectionState::Disabled
         );
+    }
+
+    #[test]
+    fn backspace_edits_archive_text_without_navigation() {
+        let mut state = WizardState::new(SetupAnswers::default());
+        let initial = state.archive_input().len();
+        state.handle_key(key(KeyCode::Backspace));
+        assert_eq!(state.step(), Step::ArchiveDirectory);
+        assert_eq!(state.archive_input().len(), initial.saturating_sub(1));
     }
 }
