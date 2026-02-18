@@ -367,7 +367,7 @@ wheels = [
 
 [[package]]
 name = "ytdl-archiver"
-version = "2026.2.18"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
