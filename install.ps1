@@ -95,28 +95,30 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     }
 }
 
-if (Ask-YesNo "Install Deno? (recommended for best yt-dlp compatibility)" $true) {
-    if (-not (Get-Command deno -ErrorAction SilentlyContinue)) {
-        Write-Host "deno not found. Installing deno..."
-        powershell -ExecutionPolicy Bypass -c "irm https://deno.land/install.ps1 | iex"
-        $denoPath = Join-Path $HOME ".deno\bin"
-        if (Test-Path $denoPath -PathType Container -and -not $env:PATH.Contains($denoPath)) {
-            $env:PATH = "$denoPath;$env:PATH"
-        }
-    } else {
-        Write-Host "Good! Deno is already installed!"
+if (Get-Command deno -ErrorAction SilentlyContinue) {
+    Write-Host "Good! Deno is already installed!"
+} elseif (Ask-YesNo "Install Deno? (recommended for best yt-dlp compatibility)" $true) {
+    Write-Host "deno not found. Installing deno..."
+    powershell -ExecutionPolicy Bypass -c "irm https://deno.land/install.ps1 | iex"
+    $denoPath = Join-Path $HOME ".deno\bin"
+    if (Test-Path $denoPath -PathType Container -and -not $env:PATH.Contains($denoPath)) {
+        $env:PATH = "$denoPath;$env:PATH"
     }
 } else {
     Write-Host "Skipping Deno install."
 }
 
-if (Ask-YesNo "Install Firefox? (recommended for cookie import)" $true) {
+if (Get-Command firefox -ErrorAction SilentlyContinue) {
+    Write-Host "Good! Firefox is already installed!"
+} elseif (Ask-YesNo "Install Firefox? (recommended for cookie import)" $true) {
     Install-Firefox
 } else {
     Write-Host "Skipping Firefox install."
 }
 
-if (Ask-YesNo "Install FFmpeg? (recommended)" $true) {
+if (Get-Command ffmpeg -ErrorAction SilentlyContinue) {
+    Write-Host "Good! FFmpeg is already installed!"
+} elseif (Ask-YesNo "Install FFmpeg? (recommended)" $true) {
     Install-FFmpeg
 } else {
     Write-Host "Skipping FFmpeg install."
