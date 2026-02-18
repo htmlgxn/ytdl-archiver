@@ -174,7 +174,7 @@ class PlaylistArchiver:
         # Show playlist start message before initializing tracker
         if self.formatter:
             playlist_msg = self.formatter.playlist_start(
-                f"Processing: {playlist_path}", len(playlist_info.get("entries", []))
+                playlist_path, len(playlist_info.get("entries", []))
             )
             emit_rendered(playlist_msg)
 
@@ -228,34 +228,22 @@ class PlaylistArchiver:
 
                 if metadata:
                     stats["new"] += 1
+                    title = metadata.get("title", "Unknown")
 
                     # Generate NFO file
-                    self._generate_nfo_if_needed(metadata, output_directory)
+                    nfo_created = self._generate_nfo_if_needed(metadata, output_directory)
 
                     # Mark as downloaded
                     tracker.mark_downloaded(video_id)
 
                     if self.formatter:
-                        title = metadata.get("title", "Unknown")
-                        resolution = ""
-                        if metadata.get("height") and metadata.get("width"):
-                            resolution = f"{metadata.get('height')}p"
-
-                        # Show completion messages
-                        emit_rendered(self.formatter.video_complete(title, resolution))
-                        emit_rendered(self.formatter.file_generated("NFO metadata"))
-                        emit_rendered(self.formatter.file_generated("Thumbnail image"))
-
-                        # Only show subtitle message if subtitles were actually downloaded
-                        if metadata.get("subtitles"):
-                            emit_rendered(
-                                self.formatter.file_generated("Subtitle file")
-                            )
+                        if nfo_created:
+                            emit_rendered(self.formatter.artifact_complete(title, ".nfo"))
                     else:
                         logger.info(
                             "Successfully processed video",
                             video_id=video_id,
-                            title=metadata.get("title"),
+                            title=title,
                         )
 
             except (ArchiveError, DownloadError, MetadataError, OSError, ValueError) as e:
@@ -321,10 +309,10 @@ class PlaylistArchiver:
 
     def _generate_nfo_if_needed(
         self, metadata: dict[str, Any], output_directory: Path
-    ) -> None:
+    ) -> bool:
         """Generate NFO file if enabled."""
         if not self.config.get("media_server.generate_nfo", True):
-            return
+            return False
 
         try:
             title = metadata.get("title", "unknown-title")
@@ -341,9 +329,12 @@ class PlaylistArchiver:
             if video_file.exists():
                 nfo_path = video_file.with_suffix(".nfo")
                 self.metadata_generator.create_nfo_file(metadata, nfo_path)
+                return True
+            return False
 
         except (MetadataError, OSError, ValueError, RuntimeError, TypeError) as e:
             logger.error("Failed to generate NFO", error=str(e))
+            return False
 
     def run(self) -> None:
         """Run the archiver with playlists from file."""
@@ -375,7 +366,9 @@ class PlaylistArchiver:
 
         if self.formatter:
             emit_rendered(
-                self.formatter.playlist_start("All Playlists", len(playlists))
+                self.formatter.playlist_start(
+                    "all playlists", len(playlists), include_videos_label=False
+                )
             )
 
         # Process each playlist

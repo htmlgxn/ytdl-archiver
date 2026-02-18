@@ -4,7 +4,11 @@ from unittest.mock import Mock, patch, MagicMock
 
 import pytest
 
-from ytdl_archiver.core.downloader import YouTubeDownloader, suppress_output
+from ytdl_archiver.core.downloader import (
+    ProgressCallback,
+    YouTubeDownloader,
+    suppress_output,
+)
 
 
 class TestYouTubeDownloader:
@@ -258,6 +262,110 @@ class TestYouTubeDownloader:
         # After context, should be restored
         assert sys.stdout is old_stdout
         assert sys.stderr is old_stderr
+
+
+class TestProgressCallback:
+    """Test cases for progress callback completion formatting."""
+
+    def test_finished_events_emit_main_and_sidecar_once(self):
+        """Test one main completion plus deduplicated sidecar completion."""
+        formatter = Mock()
+        formatter.video_complete.return_value = "main-line"
+        formatter.artifact_complete.return_value = "sidecar-line"
+
+        callback = ProgressCallback(formatter)
+
+        with patch("ytdl_archiver.core.downloader.emit_rendered") as emit:
+            callback(
+                {
+                    "status": "downloading",
+                    "info_dict": {"title": "Sample Video"},
+                    "_percent_str": "10%",
+                    "_speed_str": "1MiB/s",
+                    "_eta_str": "00:10",
+                }
+            )
+            callback(
+                {
+                    "status": "finished",
+                    "filename": "/tmp/sample-video.mp4",
+                    "total_bytes_str": "100MiB",
+                    "info_dict": {
+                        "title": "Sample Video",
+                        "height": 1080,
+                        "width": 1920,
+                        "ext": "mp4",
+                    },
+                }
+            )
+            callback(
+                {
+                    "status": "finished",
+                    "filename": "/tmp/sample-video.en.srt",
+                    "info_dict": {"title": "Sample Video", "ext": "srt"},
+                }
+            )
+            callback(
+                {
+                    "status": "finished",
+                    "filename": "/tmp/sample-video.es.srt",
+                    "info_dict": {"title": "Sample Video", "ext": "srt"},
+                }
+            )
+
+        formatter.video_complete.assert_called_once_with(
+            "Sample Video", "1080p", ".mp4", "100mb"
+        )
+        formatter.artifact_complete.assert_called_once_with("Sample Video", ".srt")
+        emitted = [call.args[0] for call in emit.call_args_list]
+        assert emitted.count("main-line") == 1
+        assert emitted.count("sidecar-line") == 1
+
+    def test_extension_falls_back_to_info_dict_and_normalizes(self):
+        """Test extension extraction normalizes uppercase ext without filename."""
+        formatter = Mock()
+        formatter.video_complete.return_value = "main-line"
+        formatter.artifact_complete.return_value = "sidecar-line"
+
+        callback = ProgressCallback(formatter)
+
+        with patch("ytdl_archiver.core.downloader.emit_rendered"):
+            callback(
+                {
+                    "status": "finished",
+                    "info_dict": {
+                        "title": "No Filename Video",
+                        "height": 720,
+                        "width": 1280,
+                        "ext": "MP4",
+                    },
+                    "_total_bytes_str": "55MiB",
+                }
+            )
+
+        formatter.video_complete.assert_called_once_with(
+            "No Filename Video", "720p", ".mp4", "55mb"
+        )
+
+    def test_size_format_uses_decimals_only_for_gb(self):
+        """Test gb uses decimals while mb is rounded to whole numbers."""
+        formatter = Mock()
+        formatter.video_complete.return_value = "main-line"
+        callback = ProgressCallback(formatter)
+
+        with patch("ytdl_archiver.core.downloader.emit_rendered"):
+            callback(
+                {
+                    "status": "finished",
+                    "filename": "/tmp/big-video.mp4",
+                    "info_dict": {"title": "Big Video", "ext": "mp4"},
+                    "total_bytes": int(1.25 * 1024**3),
+                }
+            )
+
+        formatter.video_complete.assert_called_once_with(
+            "Big Video", "", ".mp4", "1.25gb"
+        )
 
 
 class TestSuppressOutput:

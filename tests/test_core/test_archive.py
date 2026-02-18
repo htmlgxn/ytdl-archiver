@@ -170,6 +170,7 @@ class TestPlaylistArchiver:
             "download_video_with_config",
             return_value=sample_playlist_data["entries"][0],
         )
+        mocker.patch.object(config, "get_playlist_config", return_value={})
 
         # Process playlist - should not raise
         archiver.process_playlist("test_playlist", "TestPlaylist")
@@ -202,8 +203,82 @@ class TestPlaylistArchiver:
         with patch.object(
             archiver, "_get_playlist_info", return_value=playlist_with_none
         ):
+            with patch.object(config, "get_playlist_config", return_value={}):
             # Should not raise exception
-            archiver.process_playlist("test", "TestPlaylist")
+                archiver.process_playlist("test", "TestPlaylist")
+
+    def test_process_playlist_uses_clean_playlist_label(self, config, mocker):
+        """Test playlist formatter input does not duplicate Processing prefix."""
+        formatter = Mock()
+        formatter.playlist_start.return_value = "playlist-start"
+        formatter.warning.return_value = ""
+        formatter.playlist_summary.return_value = ""
+        archiver = PlaylistArchiver(config, formatter=formatter)
+
+        mocker.patch.object(
+            archiver,
+            "_get_playlist_info",
+            return_value={"entries": []},
+        )
+
+        archiver.process_playlist("playlist-id", "My Playlist")
+
+        formatter.playlist_start.assert_called_once_with("My Playlist", 0)
+
+    def test_run_formats_all_playlists_line(self, config, temp_dir, mocker):
+        """Test run emits normalized all playlists processing line."""
+        playlists_file = temp_dir / "playlists.toml"
+        playlists_file.write_text("")
+        formatter = Mock()
+        formatter.playlist_start.return_value = "all-playlists"
+
+        mocker.patch.object(config, "get_playlists_file", return_value=playlists_file)
+        mocker.patch.object(
+            config,
+            "load_playlists",
+            return_value=[{"id": "a", "path": "one"}, {"id": "b", "path": "two"}],
+        )
+
+        archiver = PlaylistArchiver(config, formatter=formatter)
+        process_playlist = mocker.patch.object(archiver, "process_playlist")
+
+        archiver.run()
+
+        formatter.playlist_start.assert_called_once_with(
+            "all playlists", 2, include_videos_label=False
+        )
+        assert process_playlist.call_count == 2
+
+    def test_process_playlist_does_not_emit_duplicate_video_completion(
+        self, config, temp_dir, mocker
+    ):
+        """Test archive layer only emits NFO sidecar line when created."""
+        config._config["archive"]["base_directory"] = str(temp_dir)
+        formatter = Mock()
+        formatter.playlist_start.return_value = "playlist-start"
+        formatter.playlist_summary.return_value = "playlist-summary"
+        formatter.warning.return_value = ""
+        formatter.artifact_complete.return_value = "nfo-sidecar"
+
+        archiver = PlaylistArchiver(config, formatter=formatter)
+
+        mocker.patch.object(
+            archiver,
+            "_get_playlist_info",
+            return_value={"entries": [{"id": "video1", "title": "Video 1"}]},
+        )
+        mocker.patch.object(
+            archiver.downloader,
+            "download_video_with_config",
+            return_value={"title": "Video 1"},
+        )
+        mocker.patch.object(archiver, "_generate_nfo_if_needed", return_value=True)
+        mocker.patch.object(config, "get_playlist_config", return_value={})
+
+        archiver.process_playlist("playlist-id", "PlaylistPath")
+
+        formatter.artifact_complete.assert_called_once_with("Video 1", ".nfo")
+        formatter.video_complete.assert_not_called()
 
     def test_run_refreshes_cookies_before_start_and_each_playlist(
         self, config, temp_dir, mocker
