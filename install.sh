@@ -22,9 +22,11 @@ ask_yes_no() {
 
   while true; do
     local input
+    local input_normalized
     read -r -p "${prompt} ${suffix} " input </dev/tty || input=""
     input="${input:-${default_answer}}"
-    case "${input,,}" in
+    input_normalized="$(printf '%s' "${input}" | tr '[:upper:]' '[:lower:]')"
+    case "${input_normalized}" in
       y|yes) return 0 ;;
       n|no) return 1 ;;
       *) echo "Please answer y or n." ;;
