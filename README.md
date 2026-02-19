@@ -1,5 +1,9 @@
 # ytdl-archiver
 
+<p align="center">
+  <img src="assets/branding/title-banner.png" alt="ytdl-archiver" width="900">
+</p>
+
 Modern Python CLI for archiving YouTube playlists with media-server-friendly sidecar files.
 
 ## Dependencies
