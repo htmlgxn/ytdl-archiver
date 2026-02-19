@@ -86,6 +86,13 @@ class TestProgressFormatter:
         assert "(5)" in result
         assert "videos" not in result
 
+    def test_archive_directory(self):
+        """Test archive directory output."""
+        formatter = ProgressFormatter(use_colors=False)
+        result = formatter.archive_directory("/tmp/archive")
+        assert "Archive directory:" in result
+        assert "/tmp/archive" in result
+
     def test_video_progress(self):
         """Test video progress output."""
         formatter = ProgressFormatter(use_colors=False, show_progress=True)
@@ -205,6 +212,12 @@ class TestQuietFormatter:
         result = formatter.playlist_start("Test", 10)
         assert result == ""
 
+    def test_archive_directory_returns_empty(self):
+        """Test archive directory returns empty in quiet mode."""
+        formatter = QuietFormatter()
+        result = formatter.archive_directory("/tmp/archive")
+        assert result == ""
+
     def test_video_complete_returns_empty(self):
         """Test video complete returns empty in quiet mode."""
         formatter = QuietFormatter()
@@ -307,8 +320,7 @@ class TestShouldUseColors:
     def test_tty_enables_colors(self, mock_isatty):
         """Test TTY enables colors."""
         mock_isatty.return_value = True
-        result = should_use_colors(no_color=False)
-        # Depends on COLOR_SUPPORT
+        assert isinstance(should_use_colors(no_color=False), bool)
 
     @patch("ytdl_archiver.output.sys.stdout.isatty")
     def test_non_tty_disables_colors(self, mock_isatty):

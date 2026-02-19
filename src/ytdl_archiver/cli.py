@@ -169,6 +169,7 @@ def archive(
 
         # Print header
         emit_rendered(formatter.header(__version__))
+        emit_rendered(formatter.archive_directory(str(config.get_archive_directory())))
 
         cookie_refresher = None
         skip_initial_cookie_refresh = False

@@ -38,7 +38,7 @@ class ArchiveTracker:
         """Load existing archive file."""
         try:
             if self.archive_file.exists():
-                with open(self.archive_file) as f:
+                with self.archive_file.open() as f:
                     lines = f.read().splitlines()
                     self.downloaded_videos = set()
                     for line in lines:
@@ -52,7 +52,7 @@ class ArchiveTracker:
                 self.archive_file.touch()
                 logger.info("Created new archive file", path=str(self.archive_file))
         except OSError as e:
-            logger.error("Failed to load archive", error=str(e))
+            logger.exception("Failed to load archive", error=str(e))
             raise ArchiveError(f"Failed to load archive: {e}") from e
 
     @staticmethod
@@ -113,11 +113,11 @@ class ArchiveTracker:
         """Mark video as downloaded."""
         try:
             self.downloaded_videos.add(video_id)
-            with open(self.archive_file, "a") as f:
+            with self.archive_file.open("a") as f:
                 f.write(video_id + "\n")
             logger.debug("Marked video as downloaded", video_id=video_id)
         except OSError as e:
-            logger.error(
+            logger.exception(
                 "Failed to mark video as downloaded", video_id=video_id, error=str(e)
             )
             raise ArchiveError(f"Failed to mark video as downloaded: {e}") from e
@@ -187,7 +187,7 @@ class PlaylistArchiver:
                 f"(browser={self.cookie_browser}) - {e!s}"
             )
             self._emit_formatter_message("error", message)
-            logger.error(
+            logger.exception(
                 "Cookie refresh failed",
                 stage=stage,
                 browser=self.cookie_browser,
@@ -315,7 +315,7 @@ class PlaylistArchiver:
                         )
                     )
                 else:
-                    logger.error(
+                    logger.exception(
                         "Failed to process video", video_id=video_id, error=str(e)
                     )
                 continue
@@ -362,7 +362,7 @@ class PlaylistArchiver:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 return ydl.extract_info(playlist_url, download=False)
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Failed to get playlist info", playlist_url=playlist_url, error=str(e)
             )
             return {}
@@ -393,7 +393,7 @@ class PlaylistArchiver:
             return False
 
         except (MetadataError, OSError, ValueError, RuntimeError, TypeError) as e:
-            logger.error("Failed to generate NFO", error=str(e))
+            logger.exception("Failed to generate NFO", error=str(e))
             return False
 
     def run(self) -> None:
@@ -421,7 +421,7 @@ class PlaylistArchiver:
                     "error", f"Failed to load playlists - {e!s}"
                 )
             else:
-                logger.error("Failed to load playlists", error=str(e))
+                logger.exception("Failed to load playlists", error=str(e))
             raise ArchiveError(f"Failed to load playlists: {e}") from e
 
         if self.formatter:
@@ -464,7 +464,7 @@ class PlaylistArchiver:
                 ValueError,
                 RuntimeError,
             ) as e:
-                logger.error(
+                logger.exception(
                     "Failed to process playlist", playlist_id=playlist_id, error=str(e)
                 )
                 continue
