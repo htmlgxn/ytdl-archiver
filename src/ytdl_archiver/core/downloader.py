@@ -4,7 +4,7 @@ import logging
 import re
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar, cast
 
 import yt_dlp
 from tenacity import (
@@ -36,6 +36,7 @@ try:
     logger = structlog.get_logger()
 except ImportError:
     logger = logging.getLogger(__name__)
+stdlib_logger = logging.getLogger(__name__)
 
 # Completely suppress yt-dlp's own logger to prevent unwanted output
 yt_dlp_logger = logging.getLogger("yt_dlp")
@@ -49,9 +50,9 @@ for logger_name in [
     "yt_dlp.downloader",
     "yt_dlp.postprocessor",
 ]:
-    logger = logging.getLogger(logger_name)
-    logger.setLevel(logging.CRITICAL)
-    logger.addHandler(logging.NullHandler())
+    child_logger = logging.getLogger(logger_name)
+    child_logger.setLevel(logging.CRITICAL)
+    child_logger.addHandler(logging.NullHandler())
 
 
 class SilentYTDLPLogger:
@@ -73,8 +74,21 @@ class SilentYTDLPLogger:
 class ProgressCallback:
     """Progress callback for yt-dlp with formatter integration."""
 
-    THUMBNAIL_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
-    INTERMEDIATE_MEDIA_EXTENSIONS = {".webm", ".m4a", ".mp4", ".mkv", ".mov", ".ts"}
+    THUMBNAIL_EXTENSIONS: ClassVar[set[str]] = {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".gif",
+    }
+    INTERMEDIATE_MEDIA_EXTENSIONS: ClassVar[set[str]] = {
+        ".webm",
+        ".m4a",
+        ".mp4",
+        ".mkv",
+        ".mov",
+        ".ts",
+    }
 
     def __init__(self, formatter):
         self.formatter = formatter
@@ -336,7 +350,7 @@ class YouTubeDownloader:
             emit_rendered(self.formatter.mp4_generated(title, resolution, mp4_size))
 
     def _build_ydl_options(
-        self, playlist_config: dict[str, Any] = None
+        self, playlist_config: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Build yt-dlp options from configuration with playlist-specific overrides."""
         # Use empty dict if no playlist config provided
@@ -457,16 +471,18 @@ class YouTubeDownloader:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 return ydl.extract_info(video_url, download=True)
         except yt_dlp.DownloadError as e:
-            logger.error("Download failed", video_url=video_url, error=str(e))
+            logger.exception(
+                "Download failed",
+                extra={"video_url": video_url, "error": str(e)},
+            )
             raise DownloadError(f"Failed to download {video_url}: {e}") from e
         except Exception as e:
             emit_formatter_message(
                 self.formatter, "error", f"Unexpected error downloading video - {e!s}"
             )
-            logger.error(
+            logger.exception(
                 "Unexpected error during download",
-                video_url=video_url,
-                error=str(e),
+                extra={"video_url": video_url, "error": str(e)},
             )
             raise DownloadError(f"Unexpected error downloading {video_url}: {e}") from e
 
@@ -491,7 +507,7 @@ class YouTubeDownloader:
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10),
         retry=retry_if_exception_type((DownloadError, yt_dlp.DownloadError)),
-        before_sleep=before_sleep_log(logger, logging.WARNING),
+        before_sleep=before_sleep_log(cast(Any, stdlib_logger), logging.WARNING),
         reraise=True,
     )
     def download_video(
@@ -518,11 +534,14 @@ class YouTubeDownloader:
 
         try:
             if verbose:
-                logger.debug("Fetching metadata", video_url=video_url)
+                logger.debug("Fetching metadata", extra={"video_url": video_url})
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info_dict = ydl.extract_info(video_url, download=False)
                 if verbose and info_dict:
-                    logger.debug("Metadata fetched", title=info_dict.get("title"))
+                    logger.debug(
+                        "Metadata fetched",
+                        extra={"title": info_dict.get("title")},
+                    )
                 return info_dict
         except Exception as e:
             if self.formatter:
@@ -530,8 +549,9 @@ class YouTubeDownloader:
                     self.formatter, "error", f"Failed to get metadata - {e!s}"
                 )
             else:
-                logger.error(
-                    "Failed to get metadata", video_url=video_url, error=str(e)
+                logger.exception(
+                    "Failed to get metadata",
+                    extra={"video_url": video_url, "error": str(e)},
                 )
             return None
 
@@ -539,7 +559,7 @@ class YouTubeDownloader:
         self,
         video_url: str,
         output_directory: Path,
-        playlist_config: dict[str, Any] = None,
+        playlist_config: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Download video and handle directory structure based on metadata."""
         metadata = self.get_metadata(video_url)

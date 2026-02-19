@@ -9,6 +9,7 @@ from ytdl_archiver.core.downloader import (
     YouTubeDownloader,
     suppress_output,
 )
+from ytdl_archiver.exceptions import DownloadError
 
 
 class TestYouTubeDownloader:
@@ -126,7 +127,7 @@ class TestYouTubeDownloader:
         downloader = YouTubeDownloader(config)
 
         output_template = str(temp_dir / "test.%(ext)s")
-        with pytest.raises(Exception):
+        with pytest.raises(DownloadError):
             downloader.download_video(
                 "https://www.youtube.com/watch?v=test_video",
                 output_template,
@@ -343,21 +344,21 @@ class TestYouTubeDownloader:
 
         assert opts["cookiefile"] == str(cookie_file)
 
-    def test_is_short_vertical_video(self, config, mock_short_video_info):
+    def test_is_short_vertical_video(self, mock_short_video_info):
         """Test short video detection for vertical aspect ratio."""
         from ytdl_archiver.core.utils import is_short
 
         # Vertical video should be detected as short
         assert is_short(mock_short_video_info) is True
 
-    def test_is_short_horizontal_video(self, config, mock_video_info):
+    def test_is_short_horizontal_video(self, mock_video_info):
         """Test short video detection for horizontal aspect ratio."""
         from ytdl_archiver.core.utils import is_short
 
         # Horizontal video should not be detected as short
         assert is_short(mock_video_info) is False
 
-    def test_is_short_no_dimensions(self, config):
+    def test_is_short_no_dimensions(self):
         """Test short video detection with missing dimensions."""
         from ytdl_archiver.core.utils import is_short
 
@@ -365,7 +366,7 @@ class TestYouTubeDownloader:
         video_info_no_dims = {"id": "test", "width": None, "height": None}
         assert is_short(video_info_no_dims) is False
 
-    def test_is_short_custom_threshold(self, config, mock_video_info):
+    def test_is_short_custom_threshold(self):
         """Test short video detection with custom threshold."""
         from ytdl_archiver.core.utils import is_short
 
@@ -573,8 +574,10 @@ class TestProgressCallback:
         """Test post-download generated lines for thumbnail and final mp4."""
         config._config["archive"]["delay_between_videos"] = 0
         downloader = YouTubeDownloader(config, formatter=Mock())
-        downloader.formatter.thumbnail_generated.return_value = "thumbnail-line"
-        downloader.formatter.mp4_generated.return_value = "mp4-line"
+        formatter = downloader.formatter
+        assert formatter is not None
+        formatter.thumbnail_generated.return_value = "thumbnail-line"
+        formatter.mp4_generated.return_value = "mp4-line"
 
         metadata = {"title": "Test Video", "width": 1920, "height": 1080}
         mocker.patch.object(downloader, "get_metadata", return_value=metadata)
@@ -597,12 +600,8 @@ class TestProgressCallback:
                 None,
             )
 
-        downloader.formatter.thumbnail_generated.assert_called_once_with(
-            "Test Video", ".jpg"
-        )
-        downloader.formatter.mp4_generated.assert_called_once_with(
-            "Test Video", "1080p", "5mb"
-        )
+        formatter.thumbnail_generated.assert_called_once_with("Test Video", ".jpg")
+        formatter.mp4_generated.assert_called_once_with("Test Video", "1080p", "5mb")
         emitted = [call.args[0] for call in emit.call_args_list]
         assert "thumbnail-line" in emitted
         assert "mp4-line" in emitted
@@ -613,8 +612,10 @@ class TestProgressCallback:
         """Test mp4 generated line is skipped when no final mp4 exists."""
         config._config["archive"]["delay_between_videos"] = 0
         downloader = YouTubeDownloader(config, formatter=Mock())
-        downloader.formatter.thumbnail_generated.return_value = "thumbnail-line"
-        downloader.formatter.mp4_generated.return_value = "mp4-line"
+        formatter = downloader.formatter
+        assert formatter is not None
+        formatter.thumbnail_generated.return_value = "thumbnail-line"
+        formatter.mp4_generated.return_value = "mp4-line"
 
         metadata = {"title": "Test Video", "width": 1920, "height": 1080}
         mocker.patch.object(downloader, "get_metadata", return_value=metadata)
@@ -636,10 +637,8 @@ class TestProgressCallback:
                 None,
             )
 
-        downloader.formatter.thumbnail_generated.assert_called_once_with(
-            "Test Video", ".jpg"
-        )
-        downloader.formatter.mp4_generated.assert_not_called()
+        formatter.thumbnail_generated.assert_called_once_with("Test Video", ".jpg")
+        formatter.mp4_generated.assert_not_called()
 
 
 class TestSuppressOutput:

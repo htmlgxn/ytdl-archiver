@@ -75,7 +75,7 @@ def sample_config(temp_dir: Path) -> dict[str, Any]:
 def sample_config_file(temp_config_dir: Path, sample_config: dict[str, Any]) -> Path:
     """Create a sample configuration file."""
     config_file = temp_config_dir / "config.toml"
-    with open(config_file, "w") as f:
+    with config_file.open("w") as f:
         toml.dump(sample_config, f)
     return config_file
 

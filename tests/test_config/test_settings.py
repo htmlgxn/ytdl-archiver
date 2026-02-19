@@ -41,7 +41,7 @@ class TestConfig:
         }
 
         config_file = temp_config_dir / "config.toml"
-        with open(config_file, "w") as f:
+        with config_file.open("w") as f:
             toml.dump(user_config, f)
 
         config = Config(config_file)
@@ -90,7 +90,7 @@ class TestConfig:
         """Test handling of invalid TOML files."""
         # Create invalid TOML file
         config_file = temp_config_dir / "invalid.toml"
-        with open(config_file, "w") as f:
+        with config_file.open("w") as f:
             f.write("invalid toml content [")
 
         with pytest.raises(
@@ -109,7 +109,7 @@ class TestConfig:
         ):
             Config()
 
-    def test_config_path_expansion(self, temp_dir):
+    def test_config_path_expansion(self):
         """Test configuration path expansion."""
         config = Config()
 
@@ -132,14 +132,12 @@ class TestConfig:
         ]
 
         playlists_file = temp_config_dir / "playlists.toml"
-        with open(playlists_file, "w") as f:
+        with playlists_file.open("w") as f:
             toml.dump({"playlists": playlists_config}, f)
 
         # Create config that points to this playlists file
         config = Config()
-
-        # Mock the playlists file path
-        config.get_playlists_file = lambda: playlists_file
+        config.set_playlists_file(playlists_file)
 
         # Test playlist override
         playlist_config = config.get_playlist_config("test_playlist_id")
@@ -205,7 +203,7 @@ class TestConfig:
                 },
             ]
         }
-        with open(playlists_file, "w") as f:
+        with playlists_file.open("w") as f:
             toml.dump(playlists_data, f)
 
         config = Config(config_file)
@@ -241,7 +239,7 @@ class TestConfig:
         }
 
         config_file = temp_config_dir / "invalid.toml"
-        with open(config_file, "w") as f:
+        with config_file.open("w") as f:
             toml.dump(invalid_config, f)
 
         # Config should still load, validation happens at usage
@@ -263,7 +261,7 @@ source = "invalid_source"
         )
 
         config = Config(config_file)
-        with pytest.raises(ConfigurationError, match="Invalid cookies.source"):
+        with pytest.raises(ConfigurationError, match=r"Invalid cookies\.source"):
             config.validate()
 
     def test_validate_rejects_invalid_cookie_browser(self, temp_config_dir, temp_dir):
@@ -282,7 +280,7 @@ refresh_on_startup = true
         )
 
         config = Config(config_file)
-        with pytest.raises(ConfigurationError, match="Invalid cookies.browser"):
+        with pytest.raises(ConfigurationError, match=r"Invalid cookies\.browser"):
             config.validate()
 
     def test_validate_accepts_browser_cookie_settings(self, temp_config_dir, temp_dir):
@@ -401,7 +399,7 @@ title = "camel"
         )
 
         config = Config(config_file)
-        with pytest.raises(ConfigurationError, match="Invalid filename.case.title"):
+        with pytest.raises(ConfigurationError, match=r"Invalid filename\.case\.title"):
             config.validate()
 
     def test_validate_rejects_filename_separator_with_path_chars(
@@ -439,7 +437,9 @@ date_format = "yyyy/mm/dd"
         )
 
         config = Config(config_file)
-        with pytest.raises(ConfigurationError, match="Invalid filename.date_format"):
+        with pytest.raises(
+            ConfigurationError, match=r"Invalid filename\.date_format"
+        ):
             config.validate()
 
     def test_validate_accepts_legacy_filename_date_separator(
@@ -517,7 +517,7 @@ write_subtitles = false
 
         # Modify config file
         modified_config = {"archive": {"delay_between_videos": 10}}
-        with open(sample_config_file, "w") as f:
+        with sample_config_file.open("w") as f:
             toml.dump(modified_config, f)
 
         # Reload config

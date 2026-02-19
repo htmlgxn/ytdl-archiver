@@ -26,13 +26,16 @@ class MetadataGenerator:
         try:
             nfo_content = self._generate_nfo_content(metadata)
 
-            with open(nfo_path, "w", encoding="utf-8") as nfo_file:
+            with nfo_path.open("w", encoding="utf-8") as nfo_file:
                 nfo_file.write(nfo_content)
 
-            logger.info("NFO file created", nfo_path=str(nfo_path))
+            logger.info("NFO file created", extra={"nfo_path": str(nfo_path)})
 
         except (OSError, UnicodeEncodeError, ValueError) as e:
-            logger.error("Error writing NFO file", nfo_path=str(nfo_path), error=str(e))
+            logger.exception(
+                "Error writing NFO file",
+                extra={"nfo_path": str(nfo_path), "error": str(e)},
+            )
             raise MetadataError(f"Error writing NFO file {nfo_path}: {e}") from e
 
     def _generate_nfo_content(self, metadata: dict[str, Any]) -> str:
@@ -116,7 +119,7 @@ class MetadataGenerator:
 </Item>
 """
 
-    def _escape_xml(self, text: str) -> str:
+    def _escape_xml(self, text: str | None) -> str:
         """Escape XML special characters."""
         if not text:
             return ""
@@ -126,6 +129,4 @@ class MetadataGenerator:
         text = text.replace("<", "&lt;")
         text = text.replace(">", "&gt;")
         text = text.replace('"', "&quot;")
-        text = text.replace("'", "&apos;")
-
-        return text
+        return text.replace("'", "&apos;")
