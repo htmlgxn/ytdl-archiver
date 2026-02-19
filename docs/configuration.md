@@ -39,6 +39,18 @@ write_thumbnail = true
 thumbnail_format = "jpg"
 max_concurrent_downloads = 1
 
+[filename]
+tokens = ["title", "channel"]
+token_joiner = "_"
+date_format = "yyyy-mm-dd"
+missing_token_behavior = "omit"
+
+[filename.case]
+title = "lower"
+channel = "lower"
+upload_date = "preserve"
+video_id = "lower"
+
 [shorts]
 detect_shorts = true
 shorts_subdirectory = "YouTube Shorts"
@@ -97,3 +109,10 @@ Runtime validation includes:
 - valid cookie source values (`manual_file`, `browser`)
 - `cookies.refresh_on_startup` is boolean
 - valid `cookies.browser` when browser mode is enabled
+- filename token list is non-empty, unique, and only includes `title`, `channel`, `upload_date`, `video_id`
+- `filename.token_joiner` is non-empty and cannot include `/` or `\`
+- `filename.date_format` supports: `yyyy-mm-dd`, `yyyymmdd`, `yyyy_mm_dd`, `yyyy.mm.dd`
+- `filename.missing_token_behavior` supports `omit` only (v1)
+- per-token case modes support `preserve`, `lower`, `upper`, `title`
+- malformed or missing upload dates result in the `upload_date` token being omitted
+- legacy `filename.date_separator` is ignored when present

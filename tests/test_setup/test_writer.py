@@ -32,6 +32,10 @@ class TestSetupWriter:
         assert 'source = "browser"' in content
         assert 'browser = "firefox"' in content
         assert 'profile = "default"' in content
+        assert "[filename]" in content
+        assert 'tokens = ["title", "channel"]' in content
+        assert 'date_format = "yyyy-mm-dd"' in content
+        assert "date_separator" not in content
 
     def test_write_setup_files_never_overwrites_existing(self, temp_dir):
         """Test setup keeps existing templates unchanged."""

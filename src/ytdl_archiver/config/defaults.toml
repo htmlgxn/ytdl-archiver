@@ -16,6 +16,18 @@ write_thumbnail = true
 thumbnail_format = "jpg"
 max_concurrent_downloads = 1
 
+[filename]
+tokens = ["upload_date", "title", "channel"]
+token_joiner = "_"
+date_format = "yyyy-mm-dd"
+missing_token_behavior = "omit"
+
+[filename.case]
+title = "lower"
+channel = "lower"
+upload_date = "preserve"
+video_id = "lower"
+
 [shorts]
 detect_shorts = true
 shorts_subdirectory = "YouTube Shorts"

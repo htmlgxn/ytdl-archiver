@@ -5,7 +5,6 @@ import re
 import time
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
 
 import yt_dlp
 from tenacity import (
@@ -20,8 +19,9 @@ from ..config.settings import Config
 from ..exceptions import DownloadError
 from ..output import emit_formatter_message, emit_rendered
 from .utils import (
+    build_output_filename,
+    extract_video_id,
     is_short,
-    sanitize_filename,
 )
 from .utils import (
     suppress_output as shared_suppress_output,
@@ -441,40 +441,13 @@ class YouTubeDownloader:
 
     def _extract_video_id(self, video_url: str) -> str:
         """Extract a stable video id from common YouTube URL formats."""
-        parsed = urlparse(video_url)
-        query_id = parse_qs(parsed.query).get("v", [None])[0]
-        if query_id:
-            return query_id
-
-        path = parsed.path.strip("/")
-        if path.startswith("shorts/"):
-            short_id = path.split("/", 1)[1]
-            if short_id:
-                return short_id
-
-        tail = path.split("/")[-1]
-        if tail:
-            return tail
-
-        return "unknown-video"
+        return extract_video_id(video_url, None)
 
     def _build_output_filename(
         self, metadata: dict[str, Any] | None, video_url: str
     ) -> str:
         """Build a deterministic output filename."""
-        video_id = self._extract_video_id(video_url)
-        fallback_title = f"video-{video_id}"
-
-        title = metadata.get("title", fallback_title) if metadata else fallback_title
-        channel = (
-            metadata.get("uploader", "unknown-channel")
-            if metadata
-            else "unknown-channel"
-        )
-
-        safe_title = sanitize_filename(title) or fallback_title
-        safe_channel = sanitize_filename(channel) or "unknown-channel"
-        return f"{safe_title}_{safe_channel}"
+        return build_output_filename(self.config, metadata, video_url)
 
     def _download_with_opts(
         self, video_url: str, opts: dict[str, Any]

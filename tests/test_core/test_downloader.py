@@ -179,6 +179,159 @@ class TestYouTubeDownloader:
         assert "video-test_video_unknown-channel" in output_template
         assert filename == "video-test_video_unknown-channel"
 
+    def test_build_output_filename_supports_title_only_token(self, config):
+        """Test filename builder supports token subsets."""
+        config._config["filename"]["tokens"] = ["title"]
+        downloader = YouTubeDownloader(config)
+
+        filename = downloader._build_output_filename(
+            {"title": "My Great Video", "uploader": "Channel Name"},
+            "https://www.youtube.com/watch?v=abc123",
+        )
+
+        assert filename == "my-great-video"
+
+    def test_build_output_filename_supports_channel_only_token(self, config):
+        """Test filename builder supports single channel token."""
+        config._config["filename"]["tokens"] = ["channel"]
+        downloader = YouTubeDownloader(config)
+
+        filename = downloader._build_output_filename(
+            {"title": "My Great Video", "uploader": "Channel Name"},
+            "https://www.youtube.com/watch?v=abc123",
+        )
+
+        assert filename == "channel-name"
+
+    def test_build_output_filename_supports_upload_date_token(self, config):
+        """Test filename builder renders upload_date token."""
+        config._config["filename"]["tokens"] = ["upload_date", "title"]
+        downloader = YouTubeDownloader(config)
+
+        filename = downloader._build_output_filename(
+            {"title": "My Great Video", "upload_date": "20250131"},
+            "https://www.youtube.com/watch?v=abc123",
+        )
+
+        assert filename == "2025-01-31_my-great-video"
+
+    def test_build_output_filename_supports_compact_upload_date(self, config):
+        """Test compact yyyymmdd upload_date formatting."""
+        config._config["filename"]["tokens"] = ["upload_date", "title", "channel"]
+        config._config["filename"]["date_format"] = "yyyymmdd"
+        downloader = YouTubeDownloader(config)
+
+        filename = downloader._build_output_filename(
+            {
+                "title": "Title With Hyphens",
+                "uploader": "Channel Name",
+                "upload_date": "20250131",
+            },
+            "https://www.youtube.com/watch?v=abc123",
+        )
+
+        assert filename == "20250131_title-with-hyphens_channel-name"
+
+    def test_build_output_filename_supports_underscore_upload_date(self, config):
+        """Test yyyy_mm_dd upload_date formatting."""
+        config._config["filename"]["tokens"] = ["upload_date", "title"]
+        config._config["filename"]["date_format"] = "yyyy_mm_dd"
+        downloader = YouTubeDownloader(config)
+
+        filename = downloader._build_output_filename(
+            {"title": "My Great Video", "upload_date": "20250131"},
+            "https://www.youtube.com/watch?v=abc123",
+        )
+
+        assert filename == "2025_01_31_my-great-video"
+
+    def test_build_output_filename_supports_dot_upload_date(self, config):
+        """Test yyyy.mm.dd upload_date formatting."""
+        config._config["filename"]["tokens"] = ["upload_date", "title"]
+        config._config["filename"]["date_format"] = "yyyy.mm.dd"
+        downloader = YouTubeDownloader(config)
+
+        filename = downloader._build_output_filename(
+            {"title": "My Great Video", "upload_date": "20250131"},
+            "https://www.youtube.com/watch?v=abc123",
+        )
+
+        assert filename == "2025.01.31_my-great-video"
+
+    def test_build_output_filename_omits_missing_upload_date(self, config):
+        """Test missing date token is omitted when configured."""
+        config._config["filename"]["tokens"] = ["upload_date", "title"]
+        config._config["filename"]["missing_token_behavior"] = "omit"
+        downloader = YouTubeDownloader(config)
+
+        filename = downloader._build_output_filename(
+            {"title": "My Great Video"},
+            "https://www.youtube.com/watch?v=abc123",
+        )
+
+        assert filename == "my-great-video"
+
+    def test_build_output_filename_omits_malformed_upload_date(self, config):
+        """Test malformed upload_date token is omitted."""
+        config._config["filename"]["tokens"] = ["upload_date", "title"]
+        config._config["filename"]["date_format"] = "yyyymmdd"
+        downloader = YouTubeDownloader(config)
+
+        filename = downloader._build_output_filename(
+            {"title": "My Great Video", "upload_date": "2025-01-31"},
+            "https://www.youtube.com/watch?v=abc123",
+        )
+
+        assert filename == "my-great-video"
+
+    def test_build_output_filename_supports_all_tokens_ordered(self, config):
+        """Test full token set with explicit ordering."""
+        config._config["filename"]["tokens"] = [
+            "title",
+            "upload_date",
+            "channel",
+            "video_id",
+        ]
+        downloader = YouTubeDownloader(config)
+
+        filename = downloader._build_output_filename(
+            {
+                "title": "My Great Video",
+                "uploader": "Channel Name",
+                "upload_date": "20250131",
+            },
+            "https://www.youtube.com/watch?v=abc123",
+        )
+
+        assert filename == "my-great-video_2025-01-31_channel-name_abc123"
+
+    def test_build_output_filename_supports_custom_joiner(self, config):
+        """Test configurable token joiner."""
+        config._config["filename"]["token_joiner"] = "."
+        downloader = YouTubeDownloader(config)
+
+        filename = downloader._build_output_filename(
+            {"title": "My Great Video", "uploader": "Channel Name"},
+            "https://www.youtube.com/watch?v=abc123",
+        )
+
+        assert filename == "my-great-video.channel-name"
+
+    def test_build_output_filename_supports_per_token_case_modes(self, config):
+        """Test per-token case mapping."""
+        config._config["filename"]["tokens"] = ["title", "channel", "video_id"]
+        config._config["filename"]["case"]["title"] = "upper"
+        config._config["filename"]["case"]["channel"] = "preserve"
+        config._config["filename"]["case"]["video_id"] = "upper"
+        downloader = YouTubeDownloader(config)
+
+        filename = downloader._build_output_filename(
+            {"title": "My Great Video", "uploader": "Channel Name"},
+            "https://www.youtube.com/watch?v=abc123",
+        )
+
+        assert filename == "MY-GREAT-VIDEO_Channel-Name_ABC123"
+
     def test_runtime_options_include_cookiefile_when_configured(self, config, temp_dir):
         """Test runtime yt-dlp options include cookiefile when available."""
         cookie_file = temp_dir / "cookies.txt"

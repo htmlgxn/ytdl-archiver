@@ -71,7 +71,9 @@ class Config:
         try:
             self._config = toml.load(defaults_path)
         except Exception as e:
-            raise ConfigurationError(f"Failed to load default configuration: {e}")
+            raise ConfigurationError(
+                f"Failed to load default configuration: {e}"
+            ) from e
 
         # Override with user config if exists
         if self.config_path.exists():
@@ -80,8 +82,10 @@ class Config:
                 self._merge_config(self._config, user_config)
                 logger.info("Loaded user configuration", path=str(self.config_path))
             except Exception as e:
-                logger.error("Failed to load user configuration", error=str(e))
-                raise ConfigurationError(f"Failed to load user configuration: {e}")
+                logger.exception("Failed to load user configuration", error=str(e))
+                raise ConfigurationError(
+                    f"Failed to load user configuration: {e}"
+                ) from e
         else:
             logger.info("No user configuration found, using defaults")
 
@@ -204,18 +208,18 @@ path = "My Playlist"
 
         try:
             if playlists_file.suffix.lower() == ".toml":
-                with open(playlists_file, encoding="utf-8") as f:
+                with playlists_file.open(encoding="utf-8") as f:
                     playlists_data = toml.load(f)
                     return playlists_data.get("playlists", [])
             else:
                 # Legacy JSON handling...
-                with open(playlists_file, encoding="utf-8") as f:
+                with playlists_file.open(encoding="utf-8") as f:
                     playlists = json.load(f)
                     return [
                         {"id": p.get("id"), "path": p.get("path")} for p in playlists
                     ]
         except Exception as e:
-            raise ConfigurationError(f"Failed to load playlists: {e}")
+            raise ConfigurationError(f"Failed to load playlists: {e}") from e
 
     def get_playlist_config(
         self, playlist_id: str, playlist_path: str | None = None
@@ -311,6 +315,64 @@ path = "My Playlist"
                 raise ConfigurationError(
                     f"Invalid cookies.browser: {browser_value}. "
                     f"Valid values: {list(SUPPORTED_BROWSERS)}"
+                )
+
+        # Validate filename formatting settings
+        valid_tokens = {"title", "channel", "upload_date", "video_id"}
+        tokens = self.get("filename.tokens", ["title", "channel"])
+        if not isinstance(tokens, list) or not tokens:
+            raise ConfigurationError(
+                "filename.tokens must be a non-empty list of token names"
+            )
+        if len(tokens) != len(set(tokens)):
+            raise ConfigurationError("filename.tokens cannot contain duplicates")
+        unknown_tokens = [token for token in tokens if token not in valid_tokens]
+        if unknown_tokens:
+            raise ConfigurationError(
+                f"Invalid filename token(s): {unknown_tokens}. "
+                f"Valid values: {sorted(valid_tokens)}"
+            )
+
+        token_joiner = str(self.get("filename.token_joiner", "_"))
+        if not token_joiner.strip():
+            raise ConfigurationError("filename.token_joiner cannot be empty")
+        if "/" in token_joiner or "\\" in token_joiner:
+            raise ConfigurationError(
+                "filename.token_joiner cannot contain path separators"
+            )
+
+        # Legacy compatibility: this key is no longer used.
+        legacy_date_separator = self.get("filename.date_separator")
+        if legacy_date_separator is not None:
+            logger.warning(
+                "Ignoring deprecated filename.date_separator; use filename.date_format"
+            )
+
+        missing_behavior = str(self.get("filename.missing_token_behavior", "omit"))
+        if missing_behavior != "omit":
+            raise ConfigurationError(
+                "Invalid filename.missing_token_behavior: "
+                f"{missing_behavior}. Valid values: ['omit']"
+            )
+
+        date_format = str(self.get("filename.date_format", "yyyy-mm-dd"))
+        valid_date_formats = {"yyyy-mm-dd", "yyyymmdd", "yyyy_mm_dd", "yyyy.mm.dd"}
+        if date_format not in valid_date_formats:
+            raise ConfigurationError(
+                "Invalid filename.date_format: "
+                f"{date_format}. Valid values: {sorted(valid_date_formats)}"
+            )
+
+        case_map = self.get("filename.case", {}) or {}
+        valid_case_modes = {"preserve", "lower", "upper", "title"}
+        if not isinstance(case_map, dict):
+            raise ConfigurationError("filename.case must be a table")
+        for token in valid_tokens:
+            mode = str(case_map.get(token, "preserve"))
+            if mode not in valid_case_modes:
+                raise ConfigurationError(
+                    f"Invalid filename.case.{token}: {mode}. "
+                    f"Valid values: {sorted(valid_case_modes)}"
                 )
 
         logger.info("Configuration validated successfully")
