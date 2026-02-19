@@ -54,8 +54,9 @@ class Symbols:
         ERROR = "❌"
         HEADER = "📺"
         PLAYLIST = "📋"
+        ARCHIVE = "🗂️"
         SUMMARY = "📊"
-        INFO = "ℹ️"
+        INFO = "i"
     else:
         SUCCESS = "[OK]"
         PROGRESS = "[>>]"
@@ -63,6 +64,7 @@ class Symbols:
         ERROR = "[ERR]"
         HEADER = "[YTD]"
         PLAYLIST = "[PL]"
+        ARCHIVE = "[DIR]"
         SUMMARY = "[SUM]"
         INFO = "[INFO]"
 
@@ -111,6 +113,11 @@ class BaseFormatter:
             f"Processing: {name} ({count_display})", Colors.ORANGE
         )
         return f"{Symbols.PLAYLIST} {playlist}"
+
+    def archive_directory(self, directory: str) -> str:
+        """Print active archive directory."""
+        label = self._colorize("Archive directory:", Colors.PURPLE)
+        return f"{Symbols.ARCHIVE} {label} {directory}"
 
     @staticmethod
     def _normalize_extension(extension: str) -> str:
@@ -362,6 +369,11 @@ class QuietFormatter(BaseFormatter):
     ) -> str:
         """Print playlist processing start (quiet mode - minimal)."""
         _ = (name, video_count, include_videos_label)
+        return ""
+
+    def archive_directory(self, directory: str) -> str:
+        """Suppress archive directory line in quiet mode."""
+        _ = directory
         return ""
 
     def start_video_progress(self, title: str) -> None:

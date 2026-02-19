@@ -6,7 +6,8 @@ Modern Python CLI for archiving YouTube playlists with media-server-friendly sid
 - Python 3.14+
 - [`uv`](https://docs.astral.sh/uv/)
 - FFmpeg on `PATH`
-- Optional external JavaScript runtime (`deno` or Node.js) for full yt-dlp YouTube extraction compatibility
+- External JavaScript runtime (`deno` or `Node.js`) for full yt-dlp extraction compatibility
+- Firefox recommended for cookie extraction
 
 ## Install
 Install with uv (recommended):
