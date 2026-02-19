@@ -6,8 +6,9 @@ Modern Python CLI for archiving YouTube playlists with media-server-friendly sid
 - Python 3.14+
 - [`uv`](https://docs.astral.sh/uv/)
 - FFmpeg on `PATH`
-- External JavaScript runtime (`deno` or `Node.js`) for full yt-dlp extraction compatibility
-- Firefox recommended for cookie extraction
+- (Recommended) External JavaScript runtime (`deno` or `Node.js`) for full yt-dlp extraction compatibility
+- (Recommended) Firefox recommended for cookie extraction
+- (Optional) Rust for setup TUI
 
 ## Install
 Install with uv (recommended):
@@ -33,22 +34,6 @@ uv sync
 ```bash
 uv run ytdl-archiver archive
 ```
-
-If `~/.config/ytdl-archiver/config.toml` is missing, setup runs automatically on non-help commands and generates:
-- `~/.config/ytdl-archiver/config.toml`
-- `~/.config/ytdl-archiver/playlists.toml`
-
-Published wheels bundle prebuilt setup UI binaries for:
-- `linux-x86_64`
-- `linux-aarch64`
-- `macos-aarch64`
-- `windows-x86_64`
-
-Note: Intel macOS (`macos-x86_64`) is temporarily excluded from bundled release artifacts due to current CI runner constraints.
-
-Source installs keep the existing fallback behavior:
-- With Rust installed, setup can auto-build the UI binary.
-- Without Rust, setup falls back to prompt mode.
 
 You can also run setup directly:
 ```bash
