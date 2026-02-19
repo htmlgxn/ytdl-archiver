@@ -9,24 +9,12 @@ Modern Python CLI for archiving YouTube playlists with media-server-friendly sid
 - Optional external JavaScript runtime (`deno` or Node.js) for full yt-dlp YouTube extraction compatibility
 
 ## Install
-Quick install (Linux/macOS):
-```bash
-curl -fsSL https://raw.githubusercontent.com/htmlgxn/ytdl-archiver/main/install.sh | bash
-```
-This installs `uv`, prompts to install `deno` (recommended), Firefox (recommended), and FFmpeg (recommended), installs `ytdl-archiver`, then launches `ytdl-archiver`.
-
-Quick install (Windows PowerShell):
-```powershell
-irm https://raw.githubusercontent.com/htmlgxn/ytdl-archiver/main/install.ps1 | iex
-```
-This installs `uv`, prompts to install `deno` (recommended), Firefox (recommended), and FFmpeg (recommended), installs `ytdl-archiver`, then launches `ytdl-archiver`.
-
-Or with `uv` directly:
+Install with uv (recommended):
 ```bash
 uv tool install ytdl-archiver
 ```
 
-Or pip:
+Or with pip:
 ```bash
 pip install ytdl-archiver
 ```
