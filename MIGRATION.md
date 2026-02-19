@@ -14,6 +14,10 @@ After:
 ```bash
 ytdl-archiver archive -p /path/to/playlists.toml -d /path/to/archive
 ```
+or
+```bash
+uv run ytdl-archiver archive -p /path/to/playlists.toml -d /path/to/archive
+```
 
 ### Configuration moved to TOML in config directory
 - Primary config: `~/.config/ytdl-archiver/config.toml`
