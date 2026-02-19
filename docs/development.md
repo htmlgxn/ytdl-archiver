@@ -26,9 +26,9 @@ When changing behavior, update docs in the same change:
 
 Validation checks:
 ```bash
-UV_CACHE_DIR=.uv-cache ytdl-archiver --help
-UV_CACHE_DIR=.uv-cache ytdl-archiver archive --help
-UV_CACHE_DIR=.uv-cache ytdl-archiver init --help
+UV_CACHE_DIR=.uv-cache uv run ytdl-archiver --help
+UV_CACHE_DIR=.uv-cache uv run ytdl-archiver archive --help
+UV_CACHE_DIR=.uv-cache uv run ytdl-archiver init --help
 ```
 
 ## Setup wizard (`ratatui`) development
