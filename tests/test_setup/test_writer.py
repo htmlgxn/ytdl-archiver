@@ -74,8 +74,8 @@ class TestSetupWriter:
         assert "Interactive setup skipped" in summary
         assert "Edit config:" in summary
         assert "Add playlists:" in summary
-        assert "uv run ytdl-archiver archive" in summary
-        assert "uv run ytdl-archiver --help" in summary
+        assert "ytdl-archiver archive" in summary
+        assert "ytdl-archiver --help" in summary
 
     def test_run_setup_interactive_prefers_ratatui(self, temp_dir, monkeypatch):
         """Interactive setup uses ratatui answers when available."""

@@ -21,16 +21,16 @@ Group=your_username
 # ---------------------------------------------------------------------------
 
 # Example: Use custom playlists file
-# ExecStart=uv run ytdl-archiver archive -p /home/username/ytdl-archiver/playlists.toml
+# ExecStart=ytdl-archiver archive -p /home/username/ytdl-archiver/playlists.toml
 
 # Example: Use custom archive directory
-# ExecStart=uv run ytdl-archiver archive -d /path/to/your/video/archive
+# ExecStart=ytdl-archiver archive -d /path/to/your/video/archive
 
 # Example: Use custom config file
-# ExecStart=uv run ytdl-archiver -c /path/to/config.toml archive
+# ExecStart=ytdl-archiver -c /path/to/config.toml archive
 
 # Default: Uses config at ~/.config/ytdl-archiver/config.toml and playlists at ~/.config/ytdl-archiver/playlists.toml
-ExecStart=uv run ytdl-archiver archive
+ExecStart=ytdl-archiver archive
 
 # Restart automatically if it crashes
 Restart=on-failure
