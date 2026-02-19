@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlparse
 from ..exceptions import ArchiveError, ConfigurationError, DownloadError, MetadataError
 from ..output import emit_formatter_message, emit_rendered
 from .cookies import BrowserCookieRefresher
+from .utils import build_output_filename
 
 # Suppress yt-dlp's own logger to prevent unwanted output
 yt_dlp_logger = logging.getLogger("yt_dlp")
@@ -282,7 +283,7 @@ class PlaylistArchiver:
 
                     # Generate NFO file
                     nfo_created = self._generate_nfo_if_needed(
-                        metadata, output_directory
+                        metadata, output_directory, video_url
                     )
 
                     # Mark as downloaded
@@ -368,21 +369,14 @@ class PlaylistArchiver:
             return {}
 
     def _generate_nfo_if_needed(
-        self, metadata: dict[str, Any], output_directory: Path
+        self, metadata: dict[str, Any], output_directory: Path, video_url: str
     ) -> bool:
         """Generate NFO file if enabled."""
         if not self.config.get("media_server.generate_nfo", True):
             return False
 
         try:
-            title = metadata.get("title", "unknown-title")
-            channel = metadata.get("uploader", "unknown-channel")
-
-            from .utils import sanitize_filename
-
-            safe_title = sanitize_filename(title)
-            safe_channel = sanitize_filename(channel)
-            filename = f"{safe_title}_{safe_channel}"
+            filename = build_output_filename(self.config, metadata, video_url)
 
             # Check if video file exists
             video_file = output_directory / f"{filename}.mp4"

@@ -54,6 +54,24 @@ thumbnail_format = "jpg"
 # Number of concurrent downloads (keep 1 unless you know you need more).
 max_concurrent_downloads = 1
 
+[filename]
+# Ordered filename tokens. Supported: title, channel, upload_date, video_id
+tokens = ["title", "channel"]
+# Joiner between top-level tokens.
+token_joiner = "_"
+# Date rendering format for upload_date token.
+# Supported: yyyy-mm-dd, yyyymmdd, yyyy_mm_dd, yyyy.mm.dd
+date_format = "yyyy-mm-dd"
+# Missing token handling (v1 supports only "omit").
+missing_token_behavior = "omit"
+
+[filename.case]
+# Case mode per token: preserve, lower, upper, title
+title = "lower"
+channel = "lower"
+upload_date = "preserve"
+video_id = "lower"
+
 [shorts]
 # Detect portrait videos as Shorts and place into a subdirectory.
 detect_shorts = true

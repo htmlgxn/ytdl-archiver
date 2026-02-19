@@ -304,6 +304,163 @@ refresh_on_startup = true
         config = Config(config_file)
         config.validate()
 
+    def test_validate_accepts_valid_filename_settings(self, temp_config_dir, temp_dir):
+        """Test valid filename settings pass validation."""
+        config_file = temp_config_dir / "config.toml"
+        config_file.write_text(
+            f"""
+[archive]
+base_directory = "{temp_dir}/downloads"
+
+[filename]
+tokens = ["upload_date", "title", "channel", "video_id"]
+token_joiner = "."
+date_format = "yyyy-mm-dd"
+missing_token_behavior = "omit"
+
+[filename.case]
+title = "upper"
+channel = "preserve"
+upload_date = "preserve"
+video_id = "lower"
+"""
+        )
+
+        config = Config(config_file)
+        config.validate()
+
+    @pytest.mark.parametrize(
+        "date_format",
+        ["yyyy-mm-dd", "yyyymmdd", "yyyy_mm_dd", "yyyy.mm.dd"],
+    )
+    def test_validate_accepts_supported_filename_date_formats(
+        self, temp_config_dir, temp_dir, date_format
+    ):
+        """Test supported filename.date_format values are accepted."""
+        config_file = temp_config_dir / "config.toml"
+        config_file.write_text(
+            f"""
+[archive]
+base_directory = "{temp_dir}/downloads"
+
+[filename]
+date_format = "{date_format}"
+"""
+        )
+
+        config = Config(config_file)
+        config.validate()
+
+    def test_validate_rejects_unknown_filename_token(self, temp_config_dir, temp_dir):
+        """Test unknown filename tokens are rejected."""
+        config_file = temp_config_dir / "config.toml"
+        config_file.write_text(
+            f"""
+[archive]
+base_directory = "{temp_dir}/downloads"
+
+[filename]
+tokens = ["title", "unknown_token"]
+"""
+        )
+
+        config = Config(config_file)
+        with pytest.raises(ConfigurationError, match="Invalid filename token"):
+            config.validate()
+
+    def test_validate_rejects_duplicate_filename_tokens(self, temp_config_dir, temp_dir):
+        """Test duplicate filename tokens are rejected."""
+        config_file = temp_config_dir / "config.toml"
+        config_file.write_text(
+            f"""
+[archive]
+base_directory = "{temp_dir}/downloads"
+
+[filename]
+tokens = ["title", "title"]
+"""
+        )
+
+        config = Config(config_file)
+        with pytest.raises(ConfigurationError, match="cannot contain duplicates"):
+            config.validate()
+
+    def test_validate_rejects_invalid_filename_case_mode(
+        self, temp_config_dir, temp_dir
+    ):
+        """Test invalid per-token case mode is rejected."""
+        config_file = temp_config_dir / "config.toml"
+        config_file.write_text(
+            f"""
+[archive]
+base_directory = "{temp_dir}/downloads"
+
+[filename.case]
+title = "camel"
+"""
+        )
+
+        config = Config(config_file)
+        with pytest.raises(ConfigurationError, match="Invalid filename.case.title"):
+            config.validate()
+
+    def test_validate_rejects_filename_separator_with_path_chars(
+        self, temp_config_dir, temp_dir
+    ):
+        """Test path separator characters are rejected in joiners."""
+        config_file = temp_config_dir / "config.toml"
+        config_file.write_text(
+            f"""
+[archive]
+base_directory = "{temp_dir}/downloads"
+
+[filename]
+token_joiner = "/"
+"""
+        )
+
+        config = Config(config_file)
+        with pytest.raises(ConfigurationError, match="cannot contain path separators"):
+            config.validate()
+
+    def test_validate_rejects_unsupported_filename_date_format(
+        self, temp_config_dir, temp_dir
+    ):
+        """Test unsupported filename date formats are rejected."""
+        config_file = temp_config_dir / "config.toml"
+        config_file.write_text(
+            f"""
+[archive]
+base_directory = "{temp_dir}/downloads"
+
+[filename]
+date_format = "yyyy/mm/dd"
+"""
+        )
+
+        config = Config(config_file)
+        with pytest.raises(ConfigurationError, match="Invalid filename.date_format"):
+            config.validate()
+
+    def test_validate_accepts_legacy_filename_date_separator(
+        self, temp_config_dir, temp_dir
+    ):
+        """Test legacy filename.date_separator is ignored for compatibility."""
+        config_file = temp_config_dir / "config.toml"
+        config_file.write_text(
+            f"""
+[archive]
+base_directory = "{temp_dir}/downloads"
+
+[filename]
+date_format = "yyyymmdd"
+date_separator = "-"
+"""
+        )
+
+        config = Config(config_file)
+        config.validate()
+
     def test_config_file_permissions(self, temp_config_dir):
         """Test handling of unreadable config files."""
         config_file = temp_config_dir / "unreadable.toml"

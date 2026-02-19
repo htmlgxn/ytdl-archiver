@@ -141,8 +141,8 @@ class TestArchiveTracker:
 
     def test_mark_downloaded_permission_error(self, archive_tracker, mocker):
         """Test marking downloaded with permission error."""
-        # Mock open to raise permission error
-        mocker.patch("builtins.open", side_effect=PermissionError("Permission denied"))
+        # Mock Path.open to raise permission error
+        mocker.patch("pathlib.Path.open", side_effect=PermissionError("Permission denied"))
 
         with pytest.raises(ArchiveError, match="Failed to mark video as downloaded"):
             archive_tracker.mark_downloaded("test_video")
@@ -325,6 +325,32 @@ class TestPlaylistArchiver:
 
         formatter.artifact_complete.assert_called_once_with("Video 1", ".nfo")
         formatter.video_complete.assert_not_called()
+
+    def test_generate_nfo_uses_custom_filename_format(self, config, temp_dir, mocker):
+        """Test NFO lookup uses configurable filename builder."""
+        config._config["filename"]["tokens"] = ["upload_date", "title", "channel"]
+        config._config["filename"]["token_joiner"] = "_"
+        archiver = PlaylistArchiver(config)
+
+        metadata = {
+            "id": "abc123",
+            "title": "My Great Video",
+            "uploader": "Channel Name",
+            "upload_date": "20250131",
+        }
+        expected_stem = "2025-01-31_my-great-video_channel-name"
+        video_path = temp_dir / f"{expected_stem}.mp4"
+        video_path.write_bytes(b"video")
+
+        create_nfo = mocker.patch.object(archiver.metadata_generator, "create_nfo_file")
+        created = archiver._generate_nfo_if_needed(
+            metadata,
+            temp_dir,
+            "https://www.youtube.com/watch?v=abc123",
+        )
+
+        assert created is True
+        create_nfo.assert_called_once_with(metadata, temp_dir / f"{expected_stem}.nfo")
 
     def test_process_playlist_emits_aggregated_already_downloaded_once(
         self, config, temp_dir, mocker

@@ -4,10 +4,12 @@ import json
 import logging
 import logging.handlers
 import os
+import re
 import sys
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import structlog
 
@@ -110,17 +112,128 @@ def _parse_size(size_str: str) -> int:
     return int(size_str)
 
 
-def sanitize_filename(name: str) -> str:
+def sanitize_filename(
+    name: str, *, lowercase: bool = True, preserve_dots: bool = False
+) -> str:
     """Sanitize filename for safe file system usage."""
-    import re
+    if lowercase:
+        name = name.lower()
 
-    # Convert to lowercase and replace spaces with dashes
-    name = name.lower().replace(" ", "-")
-    # Remove or replace unwanted characters
-    name = re.sub(r'[.\'()<>"|?*]|[^-\w]', "", name)
+    # Replace spaces with dashes
+    name = name.replace(" ", "-")
+    # Remove or replace unwanted characters.
+    if preserve_dots:
+        name = re.sub(r'[\'()<>"|?*]|[^-.\w]', "", name)
+    else:
+        name = re.sub(r'[.\'()<>"|?*]|[^-\w]', "", name)
     # Remove any remaining dashes and spaces
     name = name.strip("-")
     return name
+
+
+def extract_video_id(video_url: str, metadata: dict[str, Any] | None = None) -> str:
+    """Extract a stable video id from URL and metadata fallbacks."""
+    parsed = urlparse(video_url)
+    query_id = parse_qs(parsed.query).get("v", [None])[0]
+    if query_id:
+        return str(query_id)
+
+    path = parsed.path.strip("/")
+    if path.startswith("shorts/"):
+        short_id = path.split("/", 1)[1]
+        if short_id:
+            return short_id
+
+    tail = path.split("/")[-1]
+    if tail:
+        return tail
+
+    if metadata:
+        metadata_id = str(metadata.get("id") or "").strip()
+        if metadata_id:
+            return metadata_id
+
+    return "unknown-video"
+
+
+def _apply_case_mode(value: str, mode: str) -> str:
+    """Apply configured case transformation to a token value."""
+    if mode == "lower":
+        return value.lower()
+    if mode == "upper":
+        return value.upper()
+    if mode == "title":
+        return value.title()
+    return value
+
+
+def _format_upload_date(raw_upload_date: str, date_format: str) -> str:
+    """Format upload date from YYYYMMDD to configured style."""
+    if not re.fullmatch(r"\d{8}", raw_upload_date):
+        return ""
+    year = raw_upload_date[:4]
+    month = raw_upload_date[4:6]
+    day = raw_upload_date[6:8]
+    if date_format == "yyyymmdd":
+        return f"{year}{month}{day}"
+    if date_format == "yyyy_mm_dd":
+        return f"{year}_{month}_{day}"
+    if date_format == "yyyy.mm.dd":
+        return f"{year}.{month}.{day}"
+    return f"{year}-{month}-{day}"
+
+
+def build_output_filename(
+    config: Any, metadata: dict[str, Any] | None, video_url: str
+) -> str:
+    """Build an output filename from config-driven token and formatting settings."""
+    video_id = extract_video_id(video_url, metadata)
+    fallback_title = f"video-{video_id}"
+
+    tokens = config.get("filename.tokens", ["title", "channel"])
+    token_joiner = str(config.get("filename.token_joiner", "_"))
+    date_format = str(config.get("filename.date_format", "yyyy-mm-dd"))
+    missing_token_behavior = str(config.get("filename.missing_token_behavior", "omit"))
+    case_map = config.get("filename.case", {}) or {}
+
+    title = metadata.get("title", fallback_title) if metadata else fallback_title
+    channel = metadata.get("uploader", "unknown-channel") if metadata else "unknown-channel"
+    upload_date_raw = str(metadata.get("upload_date", "") or "") if metadata else ""
+
+    raw_token_values: dict[str, str] = {
+        "title": str(title),
+        "channel": str(channel),
+        "upload_date": _format_upload_date(upload_date_raw, date_format),
+        "video_id": video_id,
+    }
+
+    formatted_tokens: list[str] = []
+    for token in tokens:
+        raw_value = str(raw_token_values.get(token, "") or "")
+        if not raw_value:
+            if missing_token_behavior == "omit":
+                continue
+            continue
+
+        case_mode = str(case_map.get(token, "preserve"))
+        cased = _apply_case_mode(raw_value, case_mode)
+        safe_value = sanitize_filename(
+            cased,
+            lowercase=False,
+            preserve_dots=(token == "upload_date"),
+        )
+        if safe_value:
+            formatted_tokens.append(safe_value)
+
+    filename = token_joiner.join(formatted_tokens)
+    if token_joiner:
+        filename = re.sub(rf"{re.escape(token_joiner)}+", token_joiner, filename)
+        filename = filename.strip(token_joiner)
+
+    if filename:
+        return filename
+
+    return sanitize_filename(fallback_title, lowercase=False) or "video-unknown-video"
 
 
 def is_short(metadata: dict[str, Any], aspect_ratio_threshold: float = 0.7) -> bool:
