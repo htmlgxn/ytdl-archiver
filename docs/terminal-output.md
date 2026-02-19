@@ -14,6 +14,7 @@ Typical flow:
 Representative messages:
 ```text
 📺 ytdl-archiver v<version>
+🗂️ Archive directory: <path>/<directory>
 📋 Processing: <playlist> (<n> videos)
 🔵 <title> 45%|██████▌... [elapsed<remaining, rate]
 ✅ Downloaded: <title> [1080p, .mp4, 350mb]

@@ -2,7 +2,7 @@
 
 Modern Python CLI for archiving YouTube playlists with media-server-friendly sidecar files.
 
-## Requirements
+## Dependencies
 - Python 3.14+
 - [`uv`](https://docs.astral.sh/uv/)
 - FFmpeg on `PATH`
@@ -32,7 +32,7 @@ uv sync
 
 ### 1. Run first-time setup
 ```bash
-uv run ytdl-archiver archive
+ytdl-archiver archive
 ```
 
 If `~/.config/ytdl-archiver/config.toml` is missing, setup runs automatically on non-help commands and generates:
@@ -41,7 +41,7 @@ If `~/.config/ytdl-archiver/config.toml` is missing, setup runs automatically on
 
 You can also run setup directly:
 ```bash
-uv run ytdl-archiver init
+ytdl-archiver init
 ```
 
 ### 2. Define playlists
@@ -66,15 +66,15 @@ Notes:
 
 ### 3. Run archive
 ```bash
-uv run ytdl-archiver archive
+ytdl-archiver archive
 ```
 
 ## Core Commands
 ```bash
-uv run ytdl-archiver --help
-uv run ytdl-archiver archive --help
-uv run ytdl-archiver convert-playlists --help
-uv run ytdl-archiver init --help
+ytdl-archiver --help
+ytdl-archiver archive --help
+ytdl-archiver convert-playlists --help
+ytdl-archiver init --help
 ```
 
 ## Documentation
@@ -84,6 +84,3 @@ uv run ytdl-archiver init --help
 - Development/contributing: `docs/development.md`
 - Migration notes: `MIGRATION.md`
 - Terminal output modes: `docs/terminal-output.md`
-
-## Optional systemd service
-See `optional/ytdl-archiver.service`.
