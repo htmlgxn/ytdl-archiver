@@ -35,6 +35,10 @@ uv sync
 uv run ytdl-archiver archive
 ```
 
+If `~/.config/ytdl-archiver/config.toml` is missing, setup runs automatically on non-help commands and generates:
+- `~/.config/ytdl-archiver/config.toml`
+- `~/.config/ytdl-archiver/playlists.toml`
+
 You can also run setup directly:
 ```bash
 uv run ytdl-archiver init
