@@ -12,7 +12,7 @@ python archive.py -j playlists.json -d /path/to/archive
 
 After:
 ```bash
-uv run ytdl-archiver archive -p /path/to/playlists.toml -d /path/to/archive
+ytdl-archiver archive -p /path/to/playlists.toml -d /path/to/archive
 ```
 
 ### Configuration moved to TOML in config directory
@@ -33,15 +33,15 @@ uv sync --dev
 ```
 2. Initialize or trigger setup:
 ```bash
-uv run ytdl-archiver init
+ytdl-archiver init
 ```
 3. Convert legacy playlists JSON if needed:
 ```bash
-uv run ytdl-archiver convert-playlists -i playlists.json -o playlists.toml
+ytdl-archiver convert-playlists -i playlists.json -o playlists.toml
 ```
 4. Run archive:
 ```bash
-uv run ytdl-archiver archive
+ytdl-archiver archive
 ```
 
 ## Reference docs

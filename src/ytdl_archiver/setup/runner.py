@@ -71,8 +71,8 @@ def render_setup_summary(result: SetupRunResult) -> list[str]:
         f"Edit config: {result.write_result.config_path}",
         f"Add playlists: {result.write_result.playlists_path}",
         "",
-        "Run archive: uv run ytdl-archiver archive",
-        "Help: uv run ytdl-archiver --help",
+        "Run archive: ytdl-archiver archive",
+        "Help: ytdl-archiver --help",
     ]
 
     if result.ui_mode == "non_interactive":
