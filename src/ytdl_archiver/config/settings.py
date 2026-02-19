@@ -44,8 +44,7 @@ class Config:
             shutil.move(str(cwd_toml), str(destination))
             logger.info(
                 "Migrated playlists.toml to config directory",
-                from_path=str(cwd_toml),
-                to_path=str(destination),
+                extra={"from_path": str(cwd_toml), "to_path": str(destination)},
             )
             return destination
         if cwd_json.exists():
@@ -53,8 +52,7 @@ class Config:
             shutil.move(str(cwd_json), str(destination))
             logger.info(
                 "Migrated playlists.json to config directory",
-                from_path=str(cwd_json),
-                to_path=str(destination),
+                extra={"from_path": str(cwd_json), "to_path": str(destination)},
             )
             return destination
         return None
@@ -80,9 +78,13 @@ class Config:
             try:
                 user_config = toml.load(self.config_path)
                 self._merge_config(self._config, user_config)
-                logger.info("Loaded user configuration", path=str(self.config_path))
+                logger.info(
+                    "Loaded user configuration", extra={"path": str(self.config_path)}
+                )
             except Exception as e:
-                logger.exception("Failed to load user configuration", error=str(e))
+                logger.exception(
+                    "Failed to load user configuration", extra={"error": str(e)}
+                )
                 raise ConfigurationError(
                     f"Failed to load user configuration: {e}"
                 ) from e
@@ -192,7 +194,9 @@ path = "My Playlist"
 """
             playlists_file.parent.mkdir(parents=True, exist_ok=True)
             playlists_file.write_text(skeleton.strip() + "\n")
-            logger.info("Created skeleton playlists file", path=str(playlists_file))
+            logger.info(
+                "Created skeleton playlists file", extra={"path": str(playlists_file)}
+            )
 
     def load_playlists(self) -> list[dict[str, Any]]:
         """Load playlists from file with playlist-specific overrides."""

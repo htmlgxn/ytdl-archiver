@@ -58,7 +58,7 @@ def cli(
     quiet: bool,
     no_color: bool,
 ) -> None:
-    """YTDL-Archiver: Modern YouTube playlist archiver."""
+    """ytdl-archiver: Modern YouTube playlist archiver."""
     try:
         ctx.ensure_object(dict)
         help_requested = _is_help_invocation(ctx)
@@ -102,9 +102,11 @@ def cli(
         console_output = output_mode.value == "verbose"
         setup_logging(ctx.obj["config"].as_dict(), console_output=console_output)
 
-        logger.info("YTDL-Archiver started", version=__version__)
+        logger.info("ytdl-archiver started", extra={"version": __version__})
         if migrated_playlists:
-            logger.info("Migrated playlists file", path=str(migrated_playlists))
+            logger.info(
+                "Migrated playlists file", extra={"path": str(migrated_playlists)}
+            )
         if ctx.invoked_subcommand is None and not help_requested:
             ctx.fail("Missing command.")
 

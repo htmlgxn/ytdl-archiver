@@ -46,14 +46,20 @@ class ArchiveTracker:
                         self.downloaded_videos.update(
                             self._extract_video_id_candidates(line)
                         )
-                logger.info("Loaded archive", video_count=len(self.downloaded_videos))
+                logger.info(
+                    "Loaded archive",
+                    extra={"video_count": len(self.downloaded_videos)},
+                )
             else:
                 # Create empty archive file
                 self.archive_file.parent.mkdir(parents=True, exist_ok=True)
                 self.archive_file.touch()
-                logger.info("Created new archive file", path=str(self.archive_file))
+                logger.info(
+                    "Created new archive file",
+                    extra={"path": str(self.archive_file)},
+                )
         except OSError as e:
-            logger.exception("Failed to load archive", error=str(e))
+            logger.exception("Failed to load archive", extra={"error": str(e)})
             raise ArchiveError(f"Failed to load archive: {e}") from e
 
     @staticmethod
@@ -116,10 +122,11 @@ class ArchiveTracker:
             self.downloaded_videos.add(video_id)
             with self.archive_file.open("a") as f:
                 f.write(video_id + "\n")
-            logger.debug("Marked video as downloaded", video_id=video_id)
+            logger.debug("Marked video as downloaded", extra={"video_id": video_id})
         except OSError as e:
             logger.exception(
-                "Failed to mark video as downloaded", video_id=video_id, error=str(e)
+                "Failed to mark video as downloaded",
+                extra={"video_id": video_id, "error": str(e)},
             )
             raise ArchiveError(f"Failed to mark video as downloaded: {e}") from e
 
@@ -146,8 +153,8 @@ class PlaylistArchiver:
         self.cookie_browser = cookie_browser.strip().lower() if cookie_browser else None
         self.cookie_profile = cookie_profile
         self.skip_initial_cookie_refresh = skip_initial_cookie_refresh
-        self.downloader = None
-        self.metadata_generator = None
+        self.downloader: Any = None
+        self.metadata_generator: Any = None
 
         # Initialize components
         self._init_components()
@@ -178,9 +185,11 @@ class PlaylistArchiver:
             )
             logger.info(
                 "Refreshed browser cookies",
-                stage=stage,
-                browser=self.cookie_browser,
-                cookie_file=str(cookie_path),
+                extra={
+                    "stage": stage,
+                    "browser": self.cookie_browser,
+                    "cookie_file": str(cookie_path),
+                },
             )
         except Exception as e:
             message = (
@@ -190,10 +199,12 @@ class PlaylistArchiver:
             self._emit_formatter_message("error", message)
             logger.exception(
                 "Cookie refresh failed",
-                stage=stage,
-                browser=self.cookie_browser,
-                cookie_file=str(cookie_path),
-                error=str(e),
+                extra={
+                    "stage": stage,
+                    "browser": self.cookie_browser,
+                    "cookie_file": str(cookie_path),
+                    "error": str(e),
+                },
             )
             raise ArchiveError(message) from e
 
@@ -220,8 +231,7 @@ class PlaylistArchiver:
             else:
                 logger.error(
                     "Failed to get playlist info",
-                    playlist_id=playlist_id,
-                    playlist_path=playlist_path,
+                    extra={"playlist_id": playlist_id, "playlist_path": playlist_path},
                 )
             return
 
@@ -263,7 +273,10 @@ class PlaylistArchiver:
             if tracker.is_downloaded(video_id):
                 stats["skipped"] += 1
                 if not self.formatter:
-                    logger.debug("Skipping already downloaded video", video_id=video_id)
+                    logger.debug(
+                        "Skipping already downloaded video",
+                        extra={"video_id": video_id},
+                    )
                 continue
 
             # Download video
@@ -297,8 +310,7 @@ class PlaylistArchiver:
                     else:
                         logger.info(
                             "Successfully processed video",
-                            video_id=video_id,
-                            title=title,
+                            extra={"video_id": video_id, "title": title},
                         )
 
             except (
@@ -317,7 +329,8 @@ class PlaylistArchiver:
                     )
                 else:
                     logger.exception(
-                        "Failed to process video", video_id=video_id, error=str(e)
+                        "Failed to process video",
+                        extra={"video_id": video_id, "error": str(e)},
                     )
                 continue
 
@@ -326,8 +339,10 @@ class PlaylistArchiver:
         else:
             logger.info(
                 "Finished processing playlist",
-                playlist_id=playlist_id,
-                downloaded_count=tracker.get_downloaded_count(),
+                extra={
+                    "playlist_id": playlist_id,
+                    "downloaded_count": tracker.get_downloaded_count(),
+                },
             )
 
     def _get_playlist_info(self, playlist_url: str) -> dict[str, Any]:
@@ -364,7 +379,8 @@ class PlaylistArchiver:
                 return ydl.extract_info(playlist_url, download=False)
         except Exception as e:
             logger.exception(
-                "Failed to get playlist info", playlist_url=playlist_url, error=str(e)
+                "Failed to get playlist info",
+                extra={"playlist_url": playlist_url, "error": str(e)},
             )
             return {}
 
@@ -387,7 +403,7 @@ class PlaylistArchiver:
             return False
 
         except (MetadataError, OSError, ValueError, RuntimeError, TypeError) as e:
-            logger.exception("Failed to generate NFO", error=str(e))
+            logger.exception("Failed to generate NFO", extra={"error": str(e)})
             return False
 
     def run(self) -> None:
@@ -403,7 +419,9 @@ class PlaylistArchiver:
                     "error", f"Playlists file not found: {playlists_file}"
                 )
             else:
-                logger.error("Playlists file not found", path=playlists_file)
+                logger.error(
+                    "Playlists file not found", extra={"path": str(playlists_file)}
+                )
             raise ArchiveError(f"Playlists file not found: {playlists_file}")
 
         # Load playlists
@@ -415,7 +433,7 @@ class PlaylistArchiver:
                     "error", f"Failed to load playlists - {e!s}"
                 )
             else:
-                logger.exception("Failed to load playlists", error=str(e))
+                logger.exception("Failed to load playlists", extra={"error": str(e)})
             raise ArchiveError(f"Failed to load playlists: {e}") from e
 
         if self.formatter:
@@ -436,7 +454,7 @@ class PlaylistArchiver:
                         "warning", "Invalid playlist entry - skipping"
                     )
                 else:
-                    logger.warning("Invalid playlist entry", playlist=playlist)
+                    logger.warning("Invalid playlist entry", extra={"playlist": playlist})
                 continue
 
             self._refresh_cookies(f"before playlist {playlist_path}")
@@ -448,7 +466,7 @@ class PlaylistArchiver:
                 if i < len(playlists) - 1:  # Not the last playlist
                     delay = self.config.get("archive.delay_between_playlists", 30)
                     if delay > 0:
-                        logger.info("Waiting before next playlist", delay=delay)
+                        logger.info("Waiting before next playlist", extra={"delay": delay})
                         time.sleep(delay)
 
             except (
@@ -459,7 +477,8 @@ class PlaylistArchiver:
                 RuntimeError,
             ) as e:
                 logger.exception(
-                    "Failed to process playlist", playlist_id=playlist_id, error=str(e)
+                    "Failed to process playlist",
+                    extra={"playlist_id": playlist_id, "error": str(e)},
                 )
                 continue
 

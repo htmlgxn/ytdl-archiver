@@ -127,8 +127,7 @@ def sanitize_filename(
     else:
         name = re.sub(r'[.\'()<>"|?*]|[^-\w]', "", name)
     # Remove any remaining dashes and spaces
-    name = name.strip("-")
-    return name
+    return name.strip("-")
 
 
 def extract_video_id(video_url: str, metadata: dict[str, Any] | None = None) -> str:
@@ -259,7 +258,7 @@ def is_short(metadata: dict[str, Any], aspect_ratio_threshold: float = 0.7) -> b
 @contextmanager
 def suppress_output():
     """Context manager to suppress stdout and stderr."""
-    with open(os.devnull, "w") as devnull:
+    with Path(os.devnull).open("w") as devnull:
         old_stdout = sys.stdout
         old_stderr = sys.stderr
         try:

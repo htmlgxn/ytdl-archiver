@@ -4,11 +4,13 @@ import sys
 from enum import Enum
 from typing import Any
 
+tqdm: Any
 try:
     import colorama
-    from tqdm import tqdm
+    from tqdm import tqdm as _tqdm
 
     COLOR_SUPPORT = True
+    tqdm = _tqdm
 except ImportError:
     COLOR_SUPPORT = False
     tqdm = None
@@ -27,17 +29,17 @@ class Colors:
 
     if COLOR_SUPPORT:
         colorama.init()
-        GREEN = colorama.Fore.GREEN
-        BLUE = colorama.Fore.BLUE
-        YELLOW = colorama.Fore.YELLOW
-        RED = colorama.Fore.RED
-        GRAY = colorama.Fore.LIGHTBLACK_EX
-        PURPLE = colorama.Fore.MAGENTA
-        ORANGE = colorama.Fore.LIGHTYELLOW_EX
-        TEAL = colorama.Fore.CYAN
-        INFO = colorama.Fore.CYAN
-        RESET = colorama.Fore.RESET
-        BOLD = colorama.Style.BRIGHT
+        GREEN = str(colorama.Fore.GREEN)
+        BLUE = str(colorama.Fore.BLUE)
+        YELLOW = str(colorama.Fore.YELLOW)
+        RED = str(colorama.Fore.RED)
+        GRAY = str(colorama.Fore.LIGHTBLACK_EX)
+        PURPLE = str(colorama.Fore.MAGENTA)
+        ORANGE = str(colorama.Fore.LIGHTYELLOW_EX)
+        TEAL = str(colorama.Fore.CYAN)
+        INFO = str(colorama.Fore.CYAN)
+        RESET = str(colorama.Fore.RESET)
+        BOLD = str(colorama.Style.BRIGHT)
     else:
         GREEN = BLUE = YELLOW = RED = GRAY = PURPLE = ORANGE = TEAL = INFO = RESET = (
             BOLD

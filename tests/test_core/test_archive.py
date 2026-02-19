@@ -197,9 +197,7 @@ class TestPlaylistArchiver:
 
             assert result == {}
 
-    def test_process_playlist_basic(
-        self, config, temp_dir, sample_playlist_data, mocker
-    ):
+    def test_process_playlist_basic(self, config, sample_playlist_data, mocker):
         """Test basic playlist processing."""
         archiver = PlaylistArchiver(config)
 
