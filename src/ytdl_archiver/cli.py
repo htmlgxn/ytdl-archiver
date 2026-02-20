@@ -170,6 +170,7 @@ def archive(
         formatter = get_formatter(use_colors, show_progress=True, mode=output_mode)
 
         # Print header
+        emit_rendered(formatter.logo_header())
         emit_rendered(formatter.header(__version__))
         emit_rendered(formatter.archive_directory(str(config.get_archive_directory())))
 
