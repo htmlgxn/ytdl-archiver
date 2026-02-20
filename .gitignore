@@ -47,3 +47,4 @@ src/ytdl_archiver/setup/bin/ytdl-archiver-setup-tui*
 # Personal
 .tmp/
 /.tmp/
+.aider*

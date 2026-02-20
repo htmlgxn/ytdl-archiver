@@ -2,6 +2,7 @@
 
 import sys
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 tqdm: Any
@@ -96,6 +97,12 @@ class BaseFormatter:
         """Build a padded, colorized status label."""
         padded = f"{text:<{self._status_label_width()}}"
         return self._colorize(padded, color)
+
+    def logo_header(self) -> str:
+        """Print logo header."""
+        logo_path = Path(__file__).parent / "ascii_logo.txt"
+        logo = logo_path.read_text()
+        return self._colorize(logo, Colors.RED)
 
     def header(self, version: str) -> str:
         """Print application header."""
@@ -253,7 +260,7 @@ class ProgressFormatter(BaseFormatter):
         percent_str = str(progress_data.get("percent") or "0%")
         try:
             percent = float(percent_str.replace("%", ""))
-        except (ValueError, AttributeError):
+        except ValueError, AttributeError:
             percent = 0
 
         speed = progress_data.get("speed", "").strip()
@@ -312,7 +319,7 @@ class ProgressFormatter(BaseFormatter):
         percent_str = str(progress_data.get("percent") or "0%")
         try:
             percent = float(percent_str.replace("%", ""))
-        except (ValueError, AttributeError):
+        except ValueError, AttributeError:
             percent = 0
 
         self._current_progress_bar.n = percent
@@ -448,6 +455,12 @@ class VerboseFormatter(BaseFormatter):
             f"{self._symbolize(Symbols.WARNING)} {warning}\n"
             f"{self._symbolize(Symbols.INFO)} {info}"
         )
+
+    def logo_header(self) -> str:
+        """Print logo header."""
+        logo_path = Path(__file__).parent / "ascii_logo.txt"
+        logo = logo_path.read_text()
+        return self._colorize(logo, Colors.RED)
 
     def header(self, version: str) -> str:
         """Print application header."""
