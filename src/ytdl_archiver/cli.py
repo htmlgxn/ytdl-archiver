@@ -1,6 +1,9 @@
 """Command line interface for ytdl-archiver."""
 
 import json
+import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -11,8 +14,15 @@ from . import __version__
 from .config.settings import Config
 from .core.archive import PlaylistArchiver
 from .core.cookies import SUPPORTED_BROWSERS, BrowserCookieRefresher
+from .core.playlist_writer import PlaylistEntry, PlaylistWriter
+from .core.search import InvidiousSearchService, SearchResult
 from .core.utils import setup_logging
-from .exceptions import ConfigurationError, CookieRefreshError
+from .exceptions import (
+    ConfigurationError,
+    CookieRefreshError,
+    PlaylistWriteError,
+    SearchError,
+)
 from .output import detect_output_mode, emit_rendered, get_formatter, should_use_colors
 from .setup import SetupCancelled, render_setup_summary, run_setup
 
@@ -269,6 +279,95 @@ def convert_playlists(input: Path, output: Path | None) -> None:
         sys.exit(1)
 
 
+@cli.command()
+@click.argument("query", required=False)
+@click.option(
+    "--include-playlists",
+    is_flag=True,
+    help="Include playlist discovery in search results",
+)
+@click.pass_context
+def search(ctx: click.Context, query: str | None, include_playlists: bool) -> None:
+    """Search channels/playlists and add selected entries to playlists.toml."""
+    formatter = None
+    try:
+        config = ctx.obj["config"]
+        output_mode = ctx.obj.get("output_mode", "progress")
+        use_colors = ctx.obj.get("use_colors", True)
+        formatter = get_formatter(use_colors, show_progress=False, mode=output_mode)
+
+        search_query = (query or "").strip()
+        if not search_query:
+            search_query = click.prompt("Search query", type=str).strip()
+        if not search_query:
+            message = formatter.error("Search query cannot be empty")
+            if message:
+                click.echo(message, err=True)
+            sys.exit(1)
+
+        service = InvidiousSearchService(config)
+        results = service.search(search_query, include_playlists=include_playlists)
+        if not results:
+            emit_rendered(formatter.warning("No matching channels or playlists found"))
+            return
+        backend_used = service.last_backend_used or "unknown"
+        channel_candidates = sum(1 for result in results if result.result_type == "channel")
+        formatter_info = getattr(formatter, "info", None)
+        summary = f"Found {channel_candidates} channel candidates via {backend_used}"
+        if callable(formatter_info):
+            info_line = formatter_info(summary)
+            if info_line:
+                emit_rendered(info_line)
+        else:
+            emit_rendered(summary)
+
+        selected, cancelled = _select_search_results(results)
+        if cancelled:
+            emit_rendered(formatter.warning("Selection cancelled"))
+            return
+        if not selected:
+            emit_rendered(formatter.warning("No results selected"))
+            return
+
+        entries: list[PlaylistEntry] = []
+        for item in selected:
+            default_path = _slugify_path(item.channel_name or item.title)
+            prompted = click.prompt(
+                f'Archive path for "{item.title}"',
+                default=default_path,
+                show_default=True,
+                type=str,
+            )
+            entries.append(
+                PlaylistEntry(
+                    id=item.archive_id,
+                    path=prompted.strip() or default_path,
+                    name=item.title,
+                )
+            )
+
+        writer = PlaylistWriter(config.get_playlists_file())
+        added, skipped = writer.append_entries(entries)
+        emit_rendered(f"Search selection complete. Added: {added}, skipped duplicates: {skipped}")
+
+    except KeyboardInterrupt:
+        if formatter:
+            message = formatter.error("Operation cancelled by user")
+            if message:
+                click.echo(message, err=True)
+        else:
+            click.echo("Operation cancelled by user", err=True)
+        sys.exit(130)
+    except (SearchError, PlaylistWriteError, OSError, ValueError, RuntimeError) as e:
+        if formatter:
+            message = formatter.error(f"Search failed - {e!s}")
+            if message:
+                click.echo(message, err=True)
+        else:
+            click.echo(f"Search failed - {e!s}", err=True)
+        sys.exit(1)
+
+
 @cli.command(name="init")
 @click.pass_context
 def init_setup(ctx: click.Context) -> None:
@@ -320,6 +419,121 @@ def _resolve_config_cookie_refresh(
             profile = str(configured_profile)
 
     return str(browser).lower(), profile
+
+
+def _result_type_label(result_type: str) -> str:
+    if result_type == "channel":
+        return "channel"
+    return "playlist"
+
+
+def _format_result_metric(result: SearchResult) -> str:
+    if result.result_type == "channel":
+        if result.subscriber_count is not None:
+            return f"subs:{result.subscriber_count}"
+        return "subs:unknown"
+    if result.video_count is not None:
+        return f"videos:{result.video_count}"
+    return "videos:unknown"
+
+
+def _short_description(text: str, limit: int = 60) -> str:
+    compact = " ".join(text.split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: limit - 3] + "..."
+
+
+def _format_result_row(index: int, result: SearchResult) -> str:
+    return (
+        f"{index}\t"
+        f"[{_result_type_label(result.result_type)}] {result.title}\t"
+        f"{result.channel_name}\t"
+        f"{_format_result_metric(result)}\t"
+        f"{result.archive_id}\t"
+        f"{_short_description(result.description)}"
+    )
+
+
+def _select_with_fzf(results: list[SearchResult]) -> tuple[list[SearchResult], bool] | None:
+    if not shutil.which("fzf"):
+        return None
+
+    rows = [_format_result_row(idx, result) for idx, result in enumerate(results, start=1)]
+    payload = "\n".join(rows) + "\n"
+    process = subprocess.run(
+        [
+            "fzf",
+            "-m",
+            "--delimiter=\t",
+            "--with-nth=2..",
+            "--prompt=Select channels/playlists > ",
+        ],
+        input=payload,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=None,
+        check=False,
+    )
+    if process.returncode == 130:
+        return [], True
+    if process.returncode != 0:
+        return [], False
+    if not process.stdout.strip():
+        return [], False
+
+    selected_indexes: list[int] = []
+    for line in process.stdout.splitlines():
+        first_col = line.split("\t", 1)[0].strip()
+        if first_col.isdigit():
+            selected_indexes.append(int(first_col))
+
+    mapped: list[SearchResult] = []
+    for index in selected_indexes:
+        if 1 <= index <= len(results):
+            mapped.append(results[index - 1])
+    return mapped, False
+
+
+def _select_with_numbered_menu(results: list[SearchResult]) -> list[SearchResult]:
+    emit_rendered("fzf not found (or no selection). Using numbered selector:")
+    for index, result in enumerate(results, start=1):
+        emit_rendered(f"{index}. [{_result_type_label(result.result_type)}] {result.title} -> {result.archive_id}")
+
+    raw = click.prompt(
+        "Select one or more entries (comma-separated numbers)",
+        default="",
+        show_default=False,
+        type=str,
+    ).strip()
+    if not raw:
+        return []
+
+    values = [token.strip() for token in raw.split(",") if token.strip()]
+    selected: list[SearchResult] = []
+    seen: set[int] = set()
+    for token in values:
+        if not token.isdigit():
+            continue
+        index = int(token)
+        if index in seen or index < 1 or index > len(results):
+            continue
+        selected.append(results[index - 1])
+        seen.add(index)
+    return selected
+
+
+def _select_search_results(results: list[SearchResult]) -> tuple[list[SearchResult], bool]:
+    selected = _select_with_fzf(results)
+    if selected is not None:
+        return selected
+    return _select_with_numbered_menu(results), False
+
+
+def _slugify_path(value: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", "-", value.strip().lower())
+    slug = normalized.strip("-")
+    return slug or "untitled"
 
 
 def main() -> None:

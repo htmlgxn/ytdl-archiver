@@ -41,13 +41,30 @@ max_file_size = "10MB"
 backup_count = 5
 
 [http]
-user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+user_agent = "Mozilla/5.0 (X11; Linux x86_64; rv:136.0) Gecko/20100101 Firefox/136.0"
 request_timeout = 30
 connect_timeout = 10
 cookie_file = "~/cookies.txt"
 
+[search]
+backend_order = ["youtube_html"]
+backend_strict = false
+fallback_enabled = false
+fallback_on_zero_results = false
+fallback_on_error = false
+target_channel_candidates = 60
+max_backend_rounds = 2
+instances = [
+  "https://yewtu.be",
+  "https://vid.puffyan.us",
+  "https://inv.nadeko.net",
+]
+max_results = 20
+youtube_html_timeout_seconds = 8
+yt_dlp_timeout_seconds = 20
+
 [cookies]
-source = "manual_file"
+source = "browser"
 browser = "firefox"
 profile = ""
 refresh_on_startup = true

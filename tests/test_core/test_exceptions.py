@@ -6,6 +6,8 @@ from ytdl_archiver.exceptions import (
     CookieRefreshError,
     DownloadError,
     MetadataError,
+    PlaylistWriteError,
+    SearchError,
     YTDLArchiverError,
 )
 
@@ -43,6 +45,18 @@ class TestExceptions:
         assert str(error) == "Config error"
         assert issubclass(ConfigurationError, YTDLArchiverError)
 
+    def test_search_error(self):
+        """Test SearchError exception."""
+        error = SearchError("Search error")
+        assert str(error) == "Search error"
+        assert issubclass(SearchError, YTDLArchiverError)
+
+    def test_playlist_write_error(self):
+        """Test PlaylistWriteError exception."""
+        error = PlaylistWriteError("Write error")
+        assert str(error) == "Write error"
+        assert issubclass(PlaylistWriteError, YTDLArchiverError)
+
     def test_exception_inheritance(self):
         """Test all exceptions inherit from YTDLArchiverError."""
         assert issubclass(DownloadError, YTDLArchiverError)
@@ -50,6 +64,8 @@ class TestExceptions:
         assert issubclass(MetadataError, YTDLArchiverError)
         assert issubclass(ConfigurationError, YTDLArchiverError)
         assert issubclass(CookieRefreshError, YTDLArchiverError)
+        assert issubclass(SearchError, YTDLArchiverError)
+        assert issubclass(PlaylistWriteError, YTDLArchiverError)
 
     def test_exception_message_formatting(self):
         """Test exception messages."""

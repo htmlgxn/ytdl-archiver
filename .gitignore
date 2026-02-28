@@ -8,8 +8,9 @@ build/
 .ruff_cache/
 .obsidian
 
-# Agents
+# Agents and resources
 .agents/
+ytfzf/
 
 # Coverage reports
 .coverage
