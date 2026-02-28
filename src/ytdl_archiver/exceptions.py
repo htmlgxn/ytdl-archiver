@@ -35,3 +35,15 @@ class CookieRefreshError(YTDLArchiverError):
     """Browser cookie refresh errors."""
 
     ...
+
+
+class SearchError(YTDLArchiverError):
+    """Search related errors."""
+
+    ...
+
+
+class PlaylistWriteError(YTDLArchiverError):
+    """Playlist writer errors."""
+
+    ...

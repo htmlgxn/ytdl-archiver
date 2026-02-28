@@ -23,7 +23,6 @@ license-files = ["LICEN[CS]E*"]
 dependencies = [
     # Core runtime
     "yt-dlp>=2026.2.4",
-    # yt-dlp JS integration helpers (runtime JS engine is an external tool)
     "yt-dlp-ejs>=0.4.0",
     "toml>=0.10.2,<0.11.0",
     "structlog>=24.2.0,<25.0.0",
@@ -32,6 +31,7 @@ dependencies = [
     "pathvalidate>=3.0.0,<4.0.0",
     "tqdm>=4.66.0,<5.0.0",
     "colorama>=0.4.6,<0.5.0",
+    "httpx>=0.28.1",
 ]
 [dependency-groups]
 dev = [

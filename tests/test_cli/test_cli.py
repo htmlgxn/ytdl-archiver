@@ -7,6 +7,8 @@ from click.testing import CliRunner
 
 from ytdl_archiver import __version__
 from ytdl_archiver.cli import cli
+from ytdl_archiver.core.search import SearchResult
+from ytdl_archiver.exceptions import SearchError
 from ytdl_archiver.setup.models import SetupAnswers, SetupRunResult, SetupWriteResult
 from ytdl_archiver.setup.runner import SetupCancelled
 
@@ -28,6 +30,7 @@ class TestCLI:
         assert "init" in result.output
         assert "init-config" not in result.output
         assert "convert-playlists" in result.output
+        assert "search" in result.output
 
     def test_cli_version(self):
         """Test CLI version command."""
@@ -402,3 +405,289 @@ base_directory = "/this/path/should/not/exist"
                 "default-release",
                 Path(temp_dir) / "cookies.txt",
             )
+
+    @patch("ytdl_archiver.cli.PlaylistWriter")
+    @patch("ytdl_archiver.cli.InvidiousSearchService")
+    @patch("ytdl_archiver.cli.subprocess.run")
+    @patch("ytdl_archiver.cli.shutil.which", return_value="/usr/bin/fzf")
+    def test_search_command_with_fzf_and_explicit_query(
+        self,
+        _mock_which,
+        mock_subprocess_run,
+        mock_search_service,
+        mock_writer_class,
+    ):
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text("")
+
+            search_service = Mock()
+            search_service.search.return_value = [
+                SearchResult(
+                    result_type="channel",
+                    title="Example Channel",
+                    source_id="UCabc123",
+                    archive_id="UUabc123",
+                    channel_name="Example Channel",
+                    subscriber_count=123,
+                    description="desc",
+                    video_count=10,
+                    instance="https://inv.example",
+                )
+            ]
+            mock_search_service.return_value = search_service
+            mock_subprocess_run.return_value = Mock(
+                returncode=0, stdout="1\t[channel] Example Channel\t...\n"
+            )
+
+            writer = Mock()
+            writer.append_entries.return_value = (1, 0)
+            mock_writer_class.return_value = writer
+
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "search", "example"],
+                input="example-channel\n",
+            )
+
+            assert result.exit_code == 0
+            writer.append_entries.assert_called_once()
+            assert "Added: 1, skipped duplicates: 0" in result.output
+            assert "Found 1 channel candidates via" in result.output
+            search_service.search.assert_called_once_with(
+                "example", include_playlists=False
+            )
+
+    @patch("ytdl_archiver.cli._select_search_results")
+    @patch("ytdl_archiver.cli.PlaylistWriter")
+    @patch("ytdl_archiver.cli.InvidiousSearchService")
+    def test_search_prompts_for_query_when_omitted(
+        self, mock_search_service, mock_writer_class, mock_select
+    ):
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text("")
+
+            selected_result = SearchResult(
+                result_type="playlist",
+                title="My Playlist",
+                source_id="PLabc",
+                archive_id="PLabc",
+                channel_name="Author",
+                subscriber_count=None,
+                description="desc",
+                video_count=3,
+                instance="https://inv.example",
+            )
+            search_service = Mock()
+            search_service.search.return_value = [selected_result]
+            mock_search_service.return_value = search_service
+            mock_select.return_value = ([selected_result], False)
+
+            writer = Mock()
+            writer.append_entries.return_value = (1, 0)
+            mock_writer_class.return_value = writer
+
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "search"],
+                input="find me\nmy-playlist\n",
+            )
+
+            assert result.exit_code == 0
+            search_service.search.assert_called_once_with(
+                "find me", include_playlists=False
+            )
+
+    @patch("ytdl_archiver.cli.PlaylistWriter")
+    @patch("ytdl_archiver.cli.InvidiousSearchService")
+    @patch("ytdl_archiver.cli.subprocess.run")
+    @patch("ytdl_archiver.cli.shutil.which", return_value="/usr/bin/fzf")
+    def test_search_fzf_cancel_shows_cancel_message(
+        self,
+        _mock_which,
+        mock_subprocess_run,
+        mock_search_service,
+        mock_writer_class,
+    ):
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text("")
+
+            search_service = Mock()
+            search_service.search.return_value = [
+                SearchResult(
+                    result_type="channel",
+                    title="Example Channel",
+                    source_id="UCabc123",
+                    archive_id="UUabc123",
+                    channel_name="Example Channel",
+                    subscriber_count=123,
+                    description="desc",
+                    video_count=10,
+                    instance="youtube-html",
+                )
+            ]
+            mock_search_service.return_value = search_service
+            mock_subprocess_run.return_value = Mock(returncode=130, stdout="")
+
+            writer = Mock()
+            mock_writer_class.return_value = writer
+
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "search", "example"],
+            )
+
+            assert result.exit_code == 0
+            assert "Selection cancelled" in result.output
+            writer.append_entries.assert_not_called()
+
+    @patch("ytdl_archiver.cli.PlaylistWriter")
+    @patch("ytdl_archiver.cli.InvidiousSearchService")
+    @patch("ytdl_archiver.cli.shutil.which", return_value=None)
+    def test_search_falls_back_to_numbered_selector_without_fzf(
+        self, _mock_which, mock_search_service, mock_writer_class
+    ):
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text("")
+
+            search_service = Mock()
+            search_service.search.return_value = [
+                SearchResult(
+                    result_type="channel",
+                    title="Fallback Channel",
+                    source_id="UCzzz",
+                    archive_id="UUzzz",
+                    channel_name="Fallback Channel",
+                    subscriber_count=1,
+                    description="desc",
+                    video_count=1,
+                    instance="https://inv.example",
+                )
+            ]
+            mock_search_service.return_value = search_service
+
+            writer = Mock()
+            writer.append_entries.return_value = (1, 0)
+            mock_writer_class.return_value = writer
+
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "search", "fallback"],
+                input="1\nfallback-path\n",
+            )
+
+            assert result.exit_code == 0
+            assert "Using numbered selector" in result.output
+
+    @patch("ytdl_archiver.cli.PlaylistWriter")
+    @patch("ytdl_archiver.cli.InvidiousSearchService")
+    @patch("ytdl_archiver.cli.shutil.which", return_value=None)
+    def test_search_multiselect_reports_duplicate_skips(
+        self, _mock_which, mock_search_service, mock_writer_class
+    ):
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text("")
+
+            search_service = Mock()
+            search_service.search.return_value = [
+                SearchResult(
+                    result_type="channel",
+                    title="Channel One",
+                    source_id="UC111",
+                    archive_id="UU111",
+                    channel_name="Channel One",
+                    subscriber_count=10,
+                    description="desc",
+                    video_count=2,
+                    instance="https://inv.example",
+                ),
+                SearchResult(
+                    result_type="channel",
+                    title="Channel Two",
+                    source_id="UC222",
+                    archive_id="UU222",
+                    channel_name="Channel Two",
+                    subscriber_count=20,
+                    description="desc",
+                    video_count=3,
+                    instance="https://inv.example",
+                ),
+            ]
+            mock_search_service.return_value = search_service
+
+            writer = Mock()
+            writer.append_entries.return_value = (1, 1)
+            mock_writer_class.return_value = writer
+
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "search", "multi"],
+                input="1,2\npath-one\npath-two\n",
+            )
+
+            assert result.exit_code == 0
+            writer.append_entries.assert_called_once()
+            assert "Added: 1, skipped duplicates: 1" in result.output
+
+    @patch("ytdl_archiver.cli.PlaylistWriter")
+    @patch("ytdl_archiver.cli.InvidiousSearchService")
+    @patch("ytdl_archiver.cli.shutil.which", return_value=None)
+    def test_search_include_playlists_flag(self, _mock_which, mock_search_service, mock_writer_class):
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text("")
+
+            search_service = Mock()
+            search_service.search.return_value = [
+                SearchResult(
+                    result_type="playlist",
+                    title="Playlist",
+                    source_id="PL1",
+                    archive_id="PL1",
+                    channel_name="Author",
+                    subscriber_count=None,
+                    description="desc",
+                    video_count=1,
+                    instance="youtube-html",
+                )
+            ]
+            mock_search_service.return_value = search_service
+
+            writer = Mock()
+            writer.append_entries.return_value = (1, 0)
+            mock_writer_class.return_value = writer
+
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "search", "--include-playlists", "mix"],
+                input="1\nplaylist-path\n",
+            )
+
+            assert result.exit_code == 0
+            search_service.search.assert_called_once_with(
+                "mix", include_playlists=True
+            )
+
+    @patch("ytdl_archiver.cli.InvidiousSearchService")
+    def test_search_failure_message_is_concise(self, mock_search_service):
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text("")
+
+            service = Mock()
+            service.search.side_effect = SearchError(
+                "Search failed across backends. invidious: 403; youtube_html: blocked"
+            )
+            mock_search_service.return_value = service
+
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "search", "art"],
+            )
+
+            assert result.exit_code == 1
+            assert "Search failed across backends." in result.output
