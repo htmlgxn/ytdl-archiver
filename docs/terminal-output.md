@@ -29,8 +29,13 @@ Representative messages:
 - Shows errors/warnings and failure-oriented playlist summary lines.
 
 ## Verbose mode (`-v`)
-- Emits additional technical informational/debug messages.
-- Includes detailed progress diagnostics useful for troubleshooting.
+- Emits additional structured technical informational/debug messages.
+- Includes diagnostics for metadata prefetch, fallback paths, cookie refresh lifecycle,
+  playlist metadata fetch, and retry/failure context.
+- Does **not** pass through raw yt-dlp verbose output.
+
+Default progress mode suppresses troubleshooting internals and keeps output focused on
+progress, completions, warnings/errors, and summaries.
 
 ## No color (`--no-color`)
 - Disables colored text styling.

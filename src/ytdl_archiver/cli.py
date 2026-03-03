@@ -108,10 +108,15 @@ def cli(
         elif quiet:
             ctx.obj["config"].set_logging_level("ERROR")
 
-        # Setup appropriate logging - no console output for clean formatter experience
-        # Only enable console logging for verbose mode or errors
+        # Setup logging. Verbose mode enables debug diagnostics on console while
+        # keeping info-level summary logs out of the way.
         console_output = output_mode.value == "verbose"
-        setup_logging(ctx.obj["config"].as_dict(), console_output=console_output)
+        console_level = "DEBUG" if console_output else "WARNING"
+        setup_logging(
+            ctx.obj["config"].as_dict(),
+            console_output=console_output,
+            console_level=console_level,
+        )
 
         logger.info("ytdl-archiver started", extra={"version": __version__})
         if migrated_playlists:

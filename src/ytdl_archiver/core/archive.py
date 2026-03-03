@@ -171,17 +171,43 @@ class PlaylistArchiver:
         """Print formatter messages consistently."""
         emit_formatter_message(self.formatter, level, message)
 
+    def _verbose_enabled(self) -> bool:
+        """Return True when runtime is configured for verbose diagnostics."""
+        return str(self.config.get("logging.level", "INFO")).upper() == "DEBUG"
+
+    def _emit_verbose_debug(self, message: str, **extra: Any) -> None:
+        """Emit debug diagnostics only in verbose mode."""
+        if not self._verbose_enabled():
+            return
+        emit_formatter_message(self.formatter, "debug", message)
+        if extra:
+            logger.debug(message, extra=extra)
+        else:
+            logger.debug(message)
+
     def _refresh_cookies(self, stage: str) -> None:
         """Refresh cookies from browser if refresh settings are enabled."""
         if not self.cookie_refresher or not self.cookie_browser:
             return
 
         cookie_path = self.config.get_cookie_file_target_path()
+        self._emit_verbose_debug(
+            f"Cookie refresh started: stage={stage}, browser={self.cookie_browser}",
+            stage=stage,
+            browser=self.cookie_browser,
+            cookie_file=str(cookie_path),
+        )
         try:
             self.cookie_refresher.refresh_to_file(
                 self.cookie_browser,
                 self.cookie_profile,
                 cookie_path,
+            )
+            self._emit_verbose_debug(
+                f"Cookie refresh completed: stage={stage}, browser={self.cookie_browser}",
+                stage=stage,
+                browser=self.cookie_browser,
+                cookie_file=str(cookie_path),
             )
             logger.info(
                 "Refreshed browser cookies",
@@ -393,13 +419,36 @@ class PlaylistArchiver:
             opts["cookiefile"] = str(cookie_path)
 
         opts["extractor_args"] = {"youtube": {"player_client": "default"}}
+        self._emit_verbose_debug(
+            f"Playlist metadata fetch started: {playlist_url}",
+            playlist_url=playlist_url,
+            cookiefile=bool(opts.get("cookiefile")),
+            extractor_args=opts.get("extractor_args"),
+        )
 
         try:
             import yt_dlp
 
             with yt_dlp.YoutubeDL(opts) as ydl:
-                return ydl.extract_info(playlist_url, download=False)
+                info = ydl.extract_info(playlist_url, download=False)
+                entries = (
+                    len(info.get("entries", []))
+                    if isinstance(info, dict) and isinstance(info.get("entries"), list)
+                    else 0
+                )
+                self._emit_verbose_debug(
+                    f"Playlist metadata fetch succeeded: entries={entries}",
+                    playlist_url=playlist_url,
+                    entries=entries,
+                    title=info.get("title") if isinstance(info, dict) else None,
+                )
+                return info
         except yt_dlp.DownloadError as e:
+            self._emit_verbose_debug(
+                f"Playlist metadata fetch failed ({type(e).__name__}: {e!s})",
+                playlist_url=playlist_url,
+                error=str(e),
+            )
             logger.exception(
                 "Failed to get playlist info",
                 extra={"playlist_url": playlist_url, "error": str(e)},
@@ -407,6 +456,11 @@ class PlaylistArchiver:
             return {}
         except Exception as e:  # pragma: no cover - defensive fallback
             # Catch any unexpected errors to prevent crashing during playlist fetch
+            self._emit_verbose_debug(
+                f"Playlist metadata fetch failed ({type(e).__name__}: {e!s})",
+                playlist_url=playlist_url,
+                error=str(e),
+            )
             logger.exception(
                 "Failed to get playlist info (unexpected error)",
                 extra={"playlist_url": playlist_url, "error": str(e)},

@@ -14,13 +14,37 @@ from urllib.parse import parse_qs, urlparse
 import structlog
 
 
-def setup_logging(config: dict[str, Any], console_output: bool = False) -> None:
+class _VerboseConsoleFilter(logging.Filter):
+    """Limit verbose console logging to technical diagnostics."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Suppress noisy info-level logs that duplicate formatter UX lines.
+        return record.levelno != logging.INFO
+
+
+def setup_logging(
+    config: dict[str, Any],
+    console_output: bool = False,
+    console_level: str = "WARNING",
+) -> None:
     """Setup structured logging with JSON output to file only."""
-    log_level = config.get("logging.level", "INFO")
-    log_format = config.get("logging.format", "json")
-    log_file = config.get("logging.file_path")
-    max_file_size = config.get("logging.max_file_size", "10MB")
-    backup_count = config.get("logging.backup_count", 5)
+    logging_config = config.get("logging", {})
+    if not isinstance(logging_config, dict):
+        logging_config = {}
+
+    def _cfg(name: str, default: Any) -> Any:
+        if name in logging_config:
+            return logging_config[name]
+        dotted = f"logging.{name}"
+        if dotted in config:
+            return config[dotted]
+        return config.get(name, default)
+
+    log_level = _cfg("level", "INFO")
+    log_format = _cfg("format", "json")
+    log_file = _cfg("file_path", None)
+    max_file_size = _cfg("max_file_size", "10MB")
+    backup_count = _cfg("backup_count", 5)
 
     # Configure structlog
     processors = [
@@ -48,7 +72,10 @@ def setup_logging(config: dict[str, Any], console_output: bool = False) -> None:
 
     # Configure standard logging - no console output by default
     logging.basicConfig(
-        level=getattr(logging, log_level.upper()), format="%(message)s", handlers=[]
+        level=getattr(logging, log_level.upper(), logging.INFO),
+        format="%(message)s",
+        handlers=[],
+        force=True,
     )
 
     # Console handler - only add if explicitly requested
@@ -62,8 +89,8 @@ def setup_logging(config: dict[str, Any], console_output: bool = False) -> None:
                     "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
                 )
             )
-        # Only show WARNING and ERROR levels in console
-        console_handler.setLevel(logging.WARNING)
+        console_handler.setLevel(getattr(logging, console_level.upper(), logging.WARNING))
+        console_handler.addFilter(_VerboseConsoleFilter())
         logging.getLogger().addHandler(console_handler)
 
     # File handler with rotation - always enabled for debugging

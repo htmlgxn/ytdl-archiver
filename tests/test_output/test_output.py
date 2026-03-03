@@ -11,6 +11,7 @@ from ytdl_archiver.output import (
     VerboseFormatter,
     detect_output_mode,
     get_formatter,
+    render_formatter_message,
     should_use_colors,
 )
 
@@ -263,6 +264,12 @@ class TestVerboseFormatter:
         formatter = VerboseFormatter(use_colors=False)
         result = formatter.debug("Test debug")
         assert "Test debug" in result
+
+    def test_non_verbose_formatter_ignores_debug_level(self):
+        """Test debug rendering is a no-op for non-verbose formatters."""
+        formatter = ProgressFormatter(use_colors=False, show_progress=False)
+        result = render_formatter_message(formatter, "debug", "Hidden debug")
+        assert result == ""
 
 
 class TestGetFormatter:

@@ -63,6 +63,7 @@ base_directory = "{temp_dir}/downloads"
 
             assert result.exit_code == 0
             assert "ytdl-archiver" in result.output.lower()
+            assert "Metadata prefetch" not in result.output
 
     @patch("ytdl_archiver.cli.MetadataBackfiller")
     @patch("ytdl_archiver.cli.Config")
@@ -365,6 +366,70 @@ base_directory = "/this/path/should/not/exist"
             )
 
         assert result.exit_code != 0
+
+    @patch("ytdl_archiver.cli.setup_logging")
+    @patch("ytdl_archiver.cli.PlaylistArchiver")
+    @patch("ytdl_archiver.cli.Config")
+    def test_verbose_mode_sets_debug_console_logging(
+        self, mock_config_class, mock_archiver, mock_setup_logging
+    ):
+        """Test verbose mode configures console logging for diagnostics."""
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text("")
+
+            mock_config = Mock()
+            mock_config.validate.return_value = None
+            mock_config.ensure_playlists_file.return_value = None
+            mock_config.as_dict.return_value = {"logging": {"level": "DEBUG"}}
+            mock_config.migrate_playlists_from_cwd.return_value = None
+            mock_config.get_archive_directory.return_value = Path(temp_dir)
+            mock_config_class.return_value = mock_config
+            mock_archiver.return_value.run.return_value = None
+
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "--verbose", "archive"],
+            )
+
+            assert result.exit_code == 0
+            mock_setup_logging.assert_called_once_with(
+                mock_config.as_dict.return_value,
+                console_output=True,
+                console_level="DEBUG",
+            )
+
+    @patch("ytdl_archiver.cli.setup_logging")
+    @patch("ytdl_archiver.cli.PlaylistArchiver")
+    @patch("ytdl_archiver.cli.Config")
+    def test_default_mode_keeps_console_logging_suppressed(
+        self, mock_config_class, mock_archiver, mock_setup_logging
+    ):
+        """Test default mode keeps console diagnostics disabled."""
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text("")
+
+            mock_config = Mock()
+            mock_config.validate.return_value = None
+            mock_config.ensure_playlists_file.return_value = None
+            mock_config.as_dict.return_value = {"logging": {"level": "INFO"}}
+            mock_config.migrate_playlists_from_cwd.return_value = None
+            mock_config.get_archive_directory.return_value = Path(temp_dir)
+            mock_config_class.return_value = mock_config
+            mock_archiver.return_value.run.return_value = None
+
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "archive"],
+            )
+
+            assert result.exit_code == 0
+            mock_setup_logging.assert_called_once_with(
+                mock_config.as_dict.return_value,
+                console_output=False,
+                console_level="WARNING",
+            )
 
     def test_cli_empty_args(self):
         """Test CLI empty invocation can run first-run setup with custom config path."""
