@@ -159,6 +159,14 @@ class TestProgressFormatter:
         assert "Test Video" in result
         assert "[1080p, 100mb]" in result
 
+    def test_subtitle_downloaded(self):
+        """Test subtitle downloaded output."""
+        formatter = ProgressFormatter(use_colors=False)
+        result = formatter.subtitle_downloaded("Test Video", ".vtt -> .srt")
+        assert "Downloaded subtitles:" in result
+        assert "Test Video" in result
+        assert "[.vtt -> .srt]" in result
+
     def test_warning(self):
         """Test warning output."""
         formatter = ProgressFormatter(use_colors=False)
@@ -236,6 +244,12 @@ class TestQuietFormatter:
         formatter = QuietFormatter(use_colors=False)
         result = formatter.warning("Warning message")
         assert "Warning message" in result
+
+    def test_subtitle_downloaded_returns_empty(self):
+        """Test subtitle downloaded returns empty in quiet mode."""
+        formatter = QuietFormatter()
+        result = formatter.subtitle_downloaded("Test Video", ".srt")
+        assert result == ""
 
 
 class TestVerboseFormatter:

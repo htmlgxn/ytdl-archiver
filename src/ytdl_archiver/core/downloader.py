@@ -1,8 +1,11 @@
 """YouTube video downloader with retry logic."""
 
+import json
 import logging
 import re
 import time
+from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, ClassVar, cast
 
@@ -88,6 +91,36 @@ class ProgressCallback:
         ".mkv",
         ".mov",
         ".ts",
+    }
+    PRIMARY_VIDEO_EXTENSIONS: ClassVar[set[str]] = {
+        ".mp4",
+        ".mkv",
+        ".webm",
+        ".mov",
+        ".m4v",
+        ".avi",
+        ".flv",
+        ".ts",
+        ".m2ts",
+        ".mpg",
+        ".mpeg",
+        ".wmv",
+        ".m4a",
+        ".mp3",
+        ".aac",
+        ".opus",
+        ".wav",
+        ".flac",
+    }
+    SUBTITLE_EXTENSIONS: ClassVar[set[str]] = {
+        ".srt",
+        ".vtt",
+        ".ass",
+        ".ssa",
+        ".ttml",
+        ".srv1",
+        ".srv2",
+        ".srv3",
     }
 
     def __init__(self, formatter):
@@ -189,11 +222,33 @@ class ProgressCallback:
             return "thumbnail"
         return ""
 
+    def _extract_subtitle_language(self, d: dict[str, Any]) -> str:
+        """Extract subtitle language identifier for deduplication."""
+        info = d.get("info_dict", {})
+        for key in ("lang", "language", "subtitle_lang"):
+            value = str(info.get(key) or "").strip()
+            if value:
+                return value.lower()
+
+        filename = str(d.get("filename") or "").strip()
+        if not filename:
+            return ""
+
+        stem = Path(filename).stem
+        parts = stem.split(".")
+        if len(parts) < 2:
+            return ""
+
+        candidate = parts[-1].strip().lower()
+        if candidate and candidate != "na":
+            return candidate
+        return ""
+
     def __call__(self, d: dict[str, Any]) -> None:
         """Handle yt-dlp progress callback."""
         if d["status"] == "downloading" and self.formatter:
-            title = d.get("info_dict", {}).get("title", "Unknown")
-            if self.current_video != title:
+            title = d.get("info_dict", {}).get("title") or self.current_video or "Unknown"
+            if self.current_video != title and title != "Unknown":
                 self._reset_current_video_state(title)
                 # Start new progress bar
                 if hasattr(self.formatter, "start_video_progress"):
@@ -229,7 +284,7 @@ class ProgressCallback:
             title = (
                 d.get("info_dict", {}).get("title") or self.current_video or "Unknown"
             )
-            if self.current_video != title:
+            if self.current_video != title and title != "Unknown":
                 self._reset_current_video_state(title)
 
             if hasattr(self.formatter, "close_video_progress"):
@@ -242,8 +297,11 @@ class ProgressCallback:
                 str(d.get("info_dict", {}).get("ext") or "")
             )
 
-            is_primary = not self._primary_emitted_for_current and (
-                not primary_ext or extension == primary_ext
+            candidate_primary = primary_ext or extension
+            is_primary = (
+                not self._primary_emitted_for_current
+                and candidate_primary in self.PRIMARY_VIDEO_EXTENSIONS
+                and extension in self.PRIMARY_VIDEO_EXTENSIONS
             )
 
             if is_primary:
@@ -254,16 +312,13 @@ class ProgressCallback:
                 self._primary_emitted_for_current = True
             elif (
                 extension
-                and extension not in self._emitted_artifact_exts
+                and extension in self.SUBTITLE_EXTENSIONS
                 and extension not in self.INTERMEDIATE_MEDIA_EXTENSIONS
                 and extension not in self.THUMBNAIL_EXTENSIONS
             ):
-                artifact_type = self._artifact_type_for_extension(extension)
-                complete_msg = self.formatter.artifact_complete(
-                    title, extension, artifact_type
-                )
-                emit_rendered(complete_msg)
-                self._emitted_artifact_exts.add(extension)
+                # Subtitle reporting is emitted from deterministic filesystem scans
+                # after download completion to avoid missing/duplicate/unknown lines.
+                return
 
 
 class YouTubeDownloader:
@@ -273,6 +328,7 @@ class YouTubeDownloader:
         self.config = config
         self.formatter = formatter
         self.ydl_opts = self._build_ydl_options()
+        self._emitted_subtitle_paths: set[str] = set()
 
     def _verbose_enabled(self) -> bool:
         """Return True when runtime is configured for verbose diagnostics."""
@@ -297,10 +353,111 @@ class YouTubeDownloader:
             "format_sort": opts.get("format_sort"),
             "socket_timeout": opts.get("socket_timeout"),
             "connect_timeout": opts.get("connect_timeout"),
+            "writeinfojson": opts.get("writeinfojson"),
             "writesubtitles": opts.get("writesubtitles"),
+            "subtitlesformat": opts.get("subtitlesformat"),
+            "convertsubtitles": opts.get("convertsubtitles"),
+            "embedsubtitles": opts.get("embedsubtitles"),
             "writethumbnail": opts.get("writethumbnail"),
             "postprocessors_count": len(opts.get("postprocessors", [])),
         }
+
+    @staticmethod
+    def _normalize_extension(extension: str) -> str:
+        """Normalize extension to .ext format."""
+        ext = extension.strip().lower()
+        if not ext:
+            return ""
+        if not ext.startswith("."):
+            return f".{ext}"
+        return ext
+
+    @staticmethod
+    def _subtitle_base_name(path: Path) -> str:
+        """Return subtitle base name without lang/extension suffix."""
+        parts = path.name.split(".")
+        if len(parts) >= 3:
+            return ".".join(parts[:-2])
+        if len(parts) == 2:
+            return parts[0]
+        return path.stem
+
+    @classmethod
+    def _subtitle_status_for_file(
+        cls,
+        subtitle_path: Path,
+        all_subtitles: list[Path],
+        requested_subtitles: dict[str, Any] | None = None,
+    ) -> str:
+        """Build subtitle status text for formatter output."""
+        ext = cls._normalize_extension(subtitle_path.suffix)
+        if ext == ".srt":
+            base = cls._subtitle_base_name(subtitle_path)
+            source_exts = {
+                cls._normalize_extension(candidate.suffix)
+                for candidate in all_subtitles
+                if cls._subtitle_base_name(candidate) == base
+            }
+            if ".vtt" in source_exts:
+                return ".vtt -> .srt"
+
+            # When source sidecar was cleaned up/replaced, infer conversion source
+            # from requested_subtitles metadata if available.
+            if requested_subtitles:
+                lang = subtitle_path.stem.split(".")[-1].lower()
+                sub_info = requested_subtitles.get(lang)
+                if isinstance(sub_info, dict):
+                    source_ext = cls._normalize_extension(str(sub_info.get("ext") or ""))
+                    if source_ext and source_ext != ".srt":
+                        return f"{source_ext} -> .srt"
+            return ".srt"
+        if ext:
+            return ext
+        return "subtitles"
+
+    @staticmethod
+    def _collect_existing_subtitles(
+        output_directory: Path, filename: str
+    ) -> tuple[list[Path], list[Path]]:
+        """Collect preferred subtitle files and all subtitle candidates."""
+        candidates: list[Path] = []
+        for path in sorted(output_directory.glob(f"{filename}.*")):
+            if not path.is_file():
+                continue
+            suffix = path.suffix.lower()
+            if suffix in ProgressCallback.SUBTITLE_EXTENSIONS:
+                candidates.append(path)
+
+        # Prefer final .srt when both source and converted subtitle exist.
+        preferred_by_key: dict[str, Path] = {}
+        for candidate in candidates:
+            key = YouTubeDownloader._subtitle_base_name(candidate)
+            existing = preferred_by_key.get(key)
+            if existing is None:
+                preferred_by_key[key] = candidate
+                continue
+
+            candidate_ext = YouTubeDownloader._normalize_extension(candidate.suffix)
+            existing_ext = YouTubeDownloader._normalize_extension(existing.suffix)
+            if candidate_ext == ".srt" and existing_ext != ".srt":
+                preferred_by_key[key] = candidate
+
+        preferred = sorted(preferred_by_key.values(), key=lambda p: p.name)
+        return preferred, candidates
+
+    def _emit_subtitle_pipeline_debug(self, opts: dict[str, Any]) -> None:
+        """Emit subtitle pipeline diagnostics in verbose mode."""
+        if not opts.get("writesubtitles"):
+            return
+        languages = opts.get("subtitleslangs") or []
+        self._emit_verbose_debug(
+            "Subtitle pipeline active",
+            writesubtitles=bool(opts.get("writesubtitles")),
+            subtitlesformat=opts.get("subtitlesformat"),
+            convertsubtitles=opts.get("convertsubtitles"),
+            embedsubtitles=bool(opts.get("embedsubtitles")),
+            subtitleslangs=list(languages) if isinstance(languages, list) else languages,
+        )
 
     @staticmethod
     def _format_size_from_bytes(total_bytes: int) -> str:
@@ -377,6 +534,64 @@ class YouTubeDownloader:
             mp4_size = self._format_size_from_bytes(mp4_path.stat().st_size)
             emit_rendered(self.formatter.mp4_generated(title, resolution, mp4_size))
 
+        subtitle_files, subtitle_candidates = self._collect_existing_subtitles(
+            output_directory, filename
+        )
+        requested_subtitles: dict[str, Any] | None = None
+        if isinstance(download_result, dict):
+            raw_requested = download_result.get("requested_subtitles")
+            if isinstance(raw_requested, dict):
+                requested_subtitles = raw_requested
+        for subtitle_path in subtitle_files:
+            subtitle_key = str(subtitle_path.resolve())
+            if subtitle_key in self._emitted_subtitle_paths:
+                continue
+            status = self._subtitle_status_for_file(
+                subtitle_path, subtitle_candidates, requested_subtitles
+            )
+            emit_rendered(self.formatter.subtitle_downloaded(title, status))
+            self._emitted_subtitle_paths.add(subtitle_key)
+
+    def _write_max_metadata_sidecar(
+        self,
+        *,
+        output_directory: Path,
+        filename: str,
+        video_url: str,
+        download_result: dict[str, Any] | None,
+    ) -> None:
+        """Write full metadata sidecar as project-owned JSON payload."""
+        if not isinstance(download_result, dict) or not download_result:
+            return
+
+        metadata_path = output_directory / f"{filename}.metadata.json"
+        tmp_path = output_directory / f"{filename}.metadata.json.tmp"
+        try:
+            sanitized_info = yt_dlp.YoutubeDL.sanitize_info(deepcopy(download_result))
+            payload = {
+                "video_url": video_url,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "extractor": str(download_result.get("extractor") or ""),
+                "metadata": sanitized_info,
+            }
+            tmp_path.write_text(
+                json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            tmp_path.replace(metadata_path)
+        except (OSError, TypeError, ValueError) as e:
+            if tmp_path.exists():
+                tmp_path.unlink(missing_ok=True)
+            self._emit_verbose_debug(
+                f"Failed to write metadata sidecar ({type(e).__name__}: {e!s})",
+                metadata_path=str(metadata_path),
+                video_url=video_url,
+            )
+            logger.warning(
+                "Failed to write metadata sidecar",
+                extra={"metadata_path": str(metadata_path), "error": str(e)},
+            )
+
     def _build_ydl_options(
         self, playlist_config: dict[str, Any] | None = None
     ) -> dict[str, Any]:
@@ -414,10 +629,18 @@ class YouTubeDownloader:
         write_subtitles = first_defined("write_subtitles", "writesubtitles")
         if write_subtitles is not None:
             opts["writesubtitles"] = write_subtitles
+
+        embed_subtitles = first_defined("embed_subtitles", "embedsubtitles")
+        if embed_subtitles is not None:
+            opts["embedsubtitles"] = embed_subtitles
             
         write_thumbnail = first_defined("write_thumbnail", "writethumbnail")
         if write_thumbnail is not None:
             opts["writethumbnail"] = write_thumbnail
+
+        write_info_json = first_defined("write_info_json", "writeinfojson")
+        if write_info_json is not None:
+            opts["writeinfojson"] = write_info_json
 
         # Subtitle format options
         subtitle_format = first_defined("subtitle_format", "subtitlesformat")
@@ -434,6 +657,20 @@ class YouTubeDownloader:
 
         # Build postprocessors list
         postprocessors = []
+
+        # Keep explicit subtitle conversion/embed processors when enabled.
+        if opts.get("writesubtitles") and opts.get("convertsubtitles"):
+            postprocessors.append(
+                {
+                    "key": "FFmpegSubtitlesConvertor",
+                    "format": str(opts["convertsubtitles"]).lstrip("."),
+                }
+            )
+
+        if opts.get("writesubtitles") and opts.get("embedsubtitles"):
+            postprocessors.append(
+                {"key": "FFmpegEmbedSubtitle", "already_have_subtitle": True}
+            )
 
         # Add recode video postprocessor if enabled
         recode_video = first_defined("recode_video")
@@ -577,9 +814,10 @@ class YouTubeDownloader:
     ) -> dict[str, Any]:
         """Download video with retry logic."""
         opts = self._build_runtime_ydl_options(include_progress_hooks=True)
+        self._emit_subtitle_pipeline_debug(opts)
         opts["outtmpl"] = {
             "default": output_template,
-            "subtitle": str(output_directory / f"{filename}.%(subtitle_lang)s.%(ext)s"),
+            "subtitle": str(output_directory / f"{filename}.%(lang)s.%(ext)s"),
             "thumbnail": str(output_directory / f"{filename}.%(ext)s"),
         }
         return self._download_with_opts(video_url, opts)
@@ -628,6 +866,7 @@ class YouTubeDownloader:
         playlist_config: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Download video and handle directory structure based on metadata."""
+        self._emitted_subtitle_paths = set()
         metadata = self.get_metadata(video_url)
         if metadata is None:
             self._emit_verbose_debug(
@@ -662,6 +901,20 @@ class YouTubeDownloader:
             filename,
             playlist_config,
         )
+        effective_write_max_metadata = self.config.get(
+            "download.write_max_metadata_json", True
+        )
+        if playlist_config and "write_max_metadata_json" in playlist_config:
+            effective_write_max_metadata = bool(
+                playlist_config.get("write_max_metadata_json")
+            )
+        if effective_write_max_metadata:
+            self._write_max_metadata_sidecar(
+                output_directory=output_directory,
+                filename=filename,
+                video_url=video_url,
+                download_result=download_result,
+            )
         self._emit_post_download_generated_lines(
             output_directory, filename, download_result, metadata
         )
@@ -679,9 +932,10 @@ class YouTubeDownloader:
         opts = self._build_runtime_ydl_options(
             playlist_config, include_progress_hooks=True
         )
+        self._emit_subtitle_pipeline_debug(opts)
         opts["outtmpl"] = {
             "default": output_template,
-            "subtitle": str(output_directory / f"{filename}.%(subtitle_lang)s.%(ext)s"),
+            "subtitle": str(output_directory / f"{filename}.%(lang)s.%(ext)s"),
             "thumbnail": str(output_directory / f"{filename}.%(ext)s"),
         }
         return self._download_with_opts(video_url, opts)

@@ -18,6 +18,8 @@ Representative messages:
 📋 Processing: <playlist> (<n> videos)
 🔵 <title> 45%|██████▌... [elapsed<remaining, rate]
 ✅ Downloaded: <title> [1080p, .mp4, 350mb]
+✅ Downloaded subtitles: <title> [.srt]
+✅ Downloaded subtitles: <title> [.vtt -> .srt]
 ✅ Thumbnail generated: <title> [.jpg]
 ✅ .mp4 generated: <title> [1080p, 350mb]
 ⚠️ Warning: <message>
@@ -36,6 +38,12 @@ Representative messages:
 
 Default progress mode suppresses troubleshooting internals and keeps output focused on
 progress, completions, warnings/errors, and summaries.
+Subtitle sidecar completion lines reuse the active video title; they should not appear as
+`Unknown` during normal downloads.
+Subtitle lines are emitted from post-download file inspection, so they still appear even
+when yt-dlp progress hook metadata is sparse.
+When subtitle embedding is enabled, sidecars are still retained and counted for CLI subtitle
+status lines.
 
 ## No color (`--no-color`)
 - Disables colored text styling.

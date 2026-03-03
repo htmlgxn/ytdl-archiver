@@ -9,8 +9,11 @@ retry_backoff_factor = 2.0
 format = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
 format_sort = "res,br,fps,container"
 merge_output_format = "mp4"
+write_info_json = true
+write_max_metadata_json = true
 write_subtitles = true
-subtitle_format = "vtt"
+embed_subtitles = true
+subtitle_format = "srt/best"
 convert_subtitles = "srt"
 subtitle_languages = ["en"]
 write_thumbnail = true

@@ -39,10 +39,16 @@ retry_backoff_factor = 2.0
 format = "bestvideo+bestaudio/best"
 # Final container when merging.
 merge_output_format = "mp4"
+# Write yt-dlp full extractor metadata sidecar (.info.json).
+write_info_json = true
+# Write project-owned full metadata sidecar (.metadata.json).
+write_max_metadata_json = true
 # Download subtitles when available.
 write_subtitles = {_toml_bool(answers.write_subtitles)}
-# Subtitle format to request from yt-dlp.
-subtitle_format = "vtt"
+# Embed subtitles into the final media file.
+embed_subtitles = true
+# Subtitle format to request from yt-dlp (prefer srt, fallback best available).
+subtitle_format = "srt/best"
 # Convert subtitles to this format after download.
 convert_subtitles = "srt"
 # Preferred subtitle language list.
@@ -144,7 +150,10 @@ name = "Example Channel Uploads"
 [playlists.download]
 # Optional per-playlist overrides:
 # format = "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
+# write_info_json = true
+# write_max_metadata_json = true
 # write_subtitles = true
+# embed_subtitles = true
 # subtitle_languages = ["en"]
 # write_thumbnail = true
 """
