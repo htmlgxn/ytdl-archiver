@@ -64,6 +64,91 @@ base_directory = "{temp_dir}/downloads"
             assert result.exit_code == 0
             assert "ytdl-archiver" in result.output.lower()
 
+    @patch("ytdl_archiver.cli.MetadataBackfiller")
+    @patch("ytdl_archiver.cli.Config")
+    def test_metadata_backfill_command_basic(
+        self, mock_config_class, mock_backfiller_class
+    ):
+        """Test basic metadata-backfill command wiring."""
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text("")
+
+            mock_config = Mock()
+            mock_config.validate.return_value = None
+            mock_config.ensure_playlists_file.return_value = None
+            mock_config.as_dict.return_value = {"logging": {"level": "INFO"}}
+            mock_config.migrate_playlists_from_cwd.return_value = None
+            mock_config_class.return_value = mock_config
+
+            mock_backfiller = Mock()
+            mock_backfiller_class.return_value = mock_backfiller
+
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "metadata-backfill"],
+            )
+
+            assert result.exit_code == 0
+            mock_backfiller.run.assert_called_once_with(
+                scope="full",
+                refresh_existing=False,
+                limit_per_playlist=None,
+                continue_on_error=True,
+            )
+
+    @patch("ytdl_archiver.cli.MetadataBackfiller")
+    @patch("ytdl_archiver.cli.Config")
+    def test_metadata_backfill_command_passes_options(
+        self, mock_config_class, mock_backfiller_class
+    ):
+        """Test metadata-backfill option passthrough."""
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            playlists_file = Path(temp_dir) / "custom-playlists.toml"
+            target_directory = Path(temp_dir) / "archive-dir"
+            config_file.write_text("")
+            playlists_file.write_text("playlists = []\n")
+
+            mock_config = Mock()
+            mock_config.validate.return_value = None
+            mock_config.ensure_playlists_file.return_value = None
+            mock_config.as_dict.return_value = {"logging": {"level": "INFO"}}
+            mock_config.migrate_playlists_from_cwd.return_value = None
+            mock_config_class.return_value = mock_config
+
+            mock_backfiller = Mock()
+            mock_backfiller_class.return_value = mock_backfiller
+
+            result = self.runner.invoke(
+                cli,
+                [
+                    "--config",
+                    str(config_file),
+                    "metadata-backfill",
+                    "--playlists",
+                    str(playlists_file),
+                    "--directory",
+                    str(target_directory),
+                    "--scope",
+                    "info-json",
+                    "--refresh-existing",
+                    "--limit-per-playlist",
+                    "3",
+                    "--fail-fast",
+                ],
+            )
+
+            assert result.exit_code == 0
+            mock_config.set_playlists_file.assert_called_once_with(playlists_file)
+            mock_config.set_archive_directory.assert_called_once_with(target_directory)
+            mock_backfiller.run.assert_called_once_with(
+                scope="info-json",
+                refresh_existing=True,
+                limit_per_playlist=3,
+                continue_on_error=False,
+            )
+
     @patch("ytdl_archiver.cli.BrowserCookieRefresher")
     @patch("ytdl_archiver.cli.PlaylistArchiver")
     @patch("ytdl_archiver.cli.Config")
