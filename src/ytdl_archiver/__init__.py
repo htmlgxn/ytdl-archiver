@@ -1,4 +1,5 @@
-"""ytdl-archiver: Modern Python CLI for archiving YouTube playlists with media-server-friendly sidecar files."""
+"""ytdl-archiver: Modern Python CLI for archiving YouTube playlists
+with media-server-friendly sidecar files."""
 
 import tomllib
 from importlib.metadata import PackageNotFoundError, version
