@@ -476,12 +476,6 @@ class YouTubeDownloader:
             }
         )
 
-        # Add extractor args for YouTube to improve reliability
-        extractor_args = opts.get("extractor_args", {})
-        extractor_args["youtube"] = extractor_args.get("youtube", {})
-        extractor_args["youtube"]["player_client"] = extractor_args["youtube"].get("player_client", "default")
-        opts["extractor_args"] = extractor_args
-
         if include_progress_hooks and self.formatter:
             opts["progress_hooks"] = [ProgressCallback(self.formatter)]
         else:

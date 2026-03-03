@@ -6,8 +6,8 @@ max_retries = 3
 retry_backoff_factor = 2.0
 
 [download]
-format = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
-format_sort = "res,br,fps,container"
+format = "bestvideo+bestaudio/best"
+format_sort = "res,br,fps"
 merge_output_format = "mp4"
 write_subtitles = true
 subtitle_format = "vtt"
