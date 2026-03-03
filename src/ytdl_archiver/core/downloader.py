@@ -372,7 +372,8 @@ class YouTubeDownloader:
         # Start with global defaults
         opts = {
             "format": first_defined("format"),
-            "format_sort": first_defined("format_sort"),
+            # TEMP: Disable format_sort - yt-dlp 2026.02.21 rejects valid syntax
+            # "format_sort": first_defined("format_sort"),
             "merge_output_format": first_defined("merge_output_format"),
             "http_headers": {
                 "User-Agent": self.config.get("http.user_agent"),
