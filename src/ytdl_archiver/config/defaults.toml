@@ -7,7 +7,10 @@ retry_backoff_factor = 2.0
 
 [download]
 format = "bestvideo+bestaudio/best"
+format_sort = "res,br,fps"
 merge_output_format = "mp4"
+recode_video = true
+postprocessor_args = ["VideoConvertor:-vcodec libx264 -acodec aac"]
 write_subtitles = true
 subtitle_format = "vtt"
 convert_subtitles = "srt"

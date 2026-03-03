@@ -362,32 +362,17 @@ class YouTubeDownloader:
                 value = playlist_config.get(key)
                 if value is not None:
                     return value
+            for key in keys:
+                value = self.config.get(f"download.{key}")
+                if value is not None:
+                    return value
             return None
 
         # Start with global defaults
         opts = {
-            "format": first_defined("format") or self.config.get("download.format"),
-            "merge_output_format": first_defined("merge_output_format")
-            or self.config.get("download.merge_output_format"),
-            "writesubtitles": first_defined("writesubtitles", "write_subtitles")
-            if first_defined("writesubtitles", "write_subtitles") is not None
-            else self.config.get("download.write_subtitles"),
-            "subtitlesformat": first_defined("subtitlesformat", "subtitle_format")
-            or self.config.get("download.subtitle_format"),
-            "convertsubtitles": first_defined("convertsubtitles", "convert_subtitles")
-            or self.config.get("download.convert_subtitles"),
-            "subtitleslangs": first_defined("subtitleslangs", "subtitle_languages")
-            or self.config.get("download.subtitle_languages"),
-            "writethumbnail": first_defined("writethumbnail", "write_thumbnail")
-            if first_defined("writethumbnail", "write_thumbnail") is not None
-            else self.config.get("download.write_thumbnail"),
-            "postprocessors": [
-                {
-                    "key": "FFmpegThumbnailsConvertor",
-                    "format": first_defined("thumbnail_format")
-                    or self.config.get("download.thumbnail_format"),
-                },
-            ],
+            "format": first_defined("format"),
+            "format_sort": first_defined("format_sort"),
+            "merge_output_format": first_defined("merge_output_format"),
             "http_headers": {
                 "User-Agent": self.config.get("http.user_agent"),
             },
@@ -396,6 +381,55 @@ class YouTubeDownloader:
             "connect_timeout": first_defined("connect_timeout")
             or self.config.get("http.connect_timeout"),
         }
+        
+        # Handle boolean options separately to preserve False values
+        write_subtitles = first_defined("write_subtitles", "writesubtitles")
+        if write_subtitles is not None:
+            opts["writesubtitles"] = write_subtitles
+            
+        write_thumbnail = first_defined("write_thumbnail", "writethumbnail")
+        if write_thumbnail is not None:
+            opts["writethumbnail"] = write_thumbnail
+
+        # Subtitle format options
+        subtitle_format = first_defined("subtitle_format", "subtitlesformat")
+        if subtitle_format is not None:
+            opts["subtitlesformat"] = subtitle_format
+            
+        convert_subtitles = first_defined("convert_subtitles", "convertsubtitles")
+        if convert_subtitles is not None:
+            opts["convertsubtitles"] = convert_subtitles
+            
+        subtitle_languages = first_defined("subtitle_languages", "subtitleslangs")
+        if subtitle_languages is not None:
+            opts["subtitleslangs"] = subtitle_languages
+
+        # Build postprocessors list
+        postprocessors = []
+
+        # Add recode video postprocessor if enabled
+        recode_video = first_defined("recode_video")
+        merge_output_format = first_defined("merge_output_format")
+        if recode_video and merge_output_format:
+            postprocessors.append({
+                "key": "FFmpegVideoConvertor",
+                "preferedformat": merge_output_format,
+            })
+
+        # Add thumbnail converter postprocessor
+        thumbnail_format = first_defined("thumbnail_format")
+        if thumbnail_format:
+            postprocessors.append({
+                "key": "FFmpegThumbnailsConvertor",
+                "format": thumbnail_format,
+            })
+
+        opts["postprocessors"] = postprocessors
+
+        # Add postprocessor arguments for forced codec conversion
+        postprocessor_args = first_defined("postprocessor_args")
+        if postprocessor_args:
+            opts["postprocessor_args"] = postprocessor_args
 
         # Add JavaScript runtime handling to suppress warnings
         if self.formatter and hasattr(self.formatter, "js_runtime_warning"):
@@ -441,6 +475,12 @@ class YouTubeDownloader:
                 "user_agent": None,
             }
         )
+
+        # Add extractor args for YouTube to improve reliability
+        extractor_args = opts.get("extractor_args", {})
+        extractor_args["youtube"] = extractor_args.get("youtube", {})
+        extractor_args["youtube"]["player_client"] = extractor_args["youtube"].get("player_client", "default")
+        opts["extractor_args"] = extractor_args
 
         if include_progress_hooks and self.formatter:
             opts["progress_hooks"] = [ProgressCallback(self.formatter)]
@@ -529,6 +569,9 @@ class YouTubeDownloader:
     def get_metadata(self, video_url: str) -> dict[str, Any] | None:
         """Get video metadata without downloading."""
         opts = self._build_runtime_ydl_options(include_progress_hooks=False)
+        
+        # Override ignoreerrors for metadata fetch to get proper exceptions
+        opts["ignoreerrors"] = False
 
         verbose = self.config.get("logging.level") == "DEBUG"
 
@@ -544,13 +587,10 @@ class YouTubeDownloader:
                     )
                 return info_dict
         except Exception as e:
-            if self.formatter:
-                emit_formatter_message(
-                    self.formatter, "error", f"Failed to get metadata - {e!s}"
-                )
-            else:
-                logger.exception(
-                    "Failed to get metadata",
+            # Log at debug level since we have a fallback
+            if verbose:
+                logger.debug(
+                    "Metadata prefetch failed (will use direct download)",
                     extra={"video_url": video_url, "error": str(e)},
                 )
             return None
