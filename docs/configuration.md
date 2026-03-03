@@ -19,6 +19,10 @@ This document summarizes those sources.
 Startup migration behavior:
 - If `playlists.toml` or `playlists.json` exists in current working directory and config-dir `playlists.toml` does not, it is moved into the config directory.
 
+Playlist display metadata:
+- `[[playlists]].name` is used as the `tvshow.nfo` title.
+- If `name` is missing/empty, fallback uses `path`.
+
 ## Default config (`config.toml`)
 ```toml
 [archive]

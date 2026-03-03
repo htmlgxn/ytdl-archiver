@@ -541,6 +541,90 @@ class TestPlaylistArchiver:
 
         formatter.already_downloaded.assert_not_called()
 
+    def test_create_tvshow_nfo_uses_config_name_for_pl_playlists(
+        self, config, temp_dir, mocker
+    ):
+        """tvshow.nfo title should come from configured playlist name."""
+        archiver = PlaylistArchiver(config)
+        output_directory = temp_dir / "My Playlist Folder"
+        output_directory.mkdir(parents=True, exist_ok=True)
+        create_tvshow = mocker.patch.object(archiver.metadata_generator, "create_tvshow_nfo")
+
+        created = archiver._create_tvshow_nfo_if_needed(
+            output_directory,
+            {"uploader": "Uploader Name"},
+            "Test Playlist",
+            "Some/Configured/Path",
+        )
+
+        assert created is True
+        create_tvshow.assert_called_once_with(
+            "Test Playlist", output_directory / "tvshow.nfo"
+        )
+
+    def test_create_tvshow_nfo_uses_config_name_for_uu_playlists(
+        self, config, temp_dir, mocker
+    ):
+        """Configured playlist name should be used regardless of playlist id type."""
+        archiver = PlaylistArchiver(config)
+        output_directory = temp_dir / "Channel Folder"
+        output_directory.mkdir(parents=True, exist_ok=True)
+        create_tvshow = mocker.patch.object(archiver.metadata_generator, "create_tvshow_nfo")
+
+        created = archiver._create_tvshow_nfo_if_needed(
+            output_directory,
+            {"uploader": "Uploader Name"},
+            "GeoWizard",
+            "Channel Folder",
+        )
+
+        assert created is True
+        create_tvshow.assert_called_once_with(
+            "GeoWizard", output_directory / "tvshow.nfo"
+        )
+
+    def test_create_tvshow_nfo_falls_back_to_path_when_name_missing(
+        self, config, temp_dir, mocker
+    ):
+        """Missing/blank configured name should fall back to playlist path basename."""
+        archiver = PlaylistArchiver(config)
+        output_directory = temp_dir / "Music Mix Folder"
+        output_directory.mkdir(parents=True, exist_ok=True)
+        create_tvshow = mocker.patch.object(archiver.metadata_generator, "create_tvshow_nfo")
+
+        created = archiver._create_tvshow_nfo_if_needed(
+            output_directory,
+            {"uploader": "Uploader Name", "title": "Playlist Metadata Title"},
+            "   ",
+            "Configured/Playlist Name",
+        )
+
+        assert created is True
+        create_tvshow.assert_called_once_with(
+            "Playlist Name", output_directory / "tvshow.nfo"
+        )
+
+    def test_create_tvshow_nfo_falls_back_to_output_directory_when_path_missing(
+        self, config, temp_dir, mocker
+    ):
+        """Path fallback should use output directory name when path is empty."""
+        archiver = PlaylistArchiver(config)
+        output_directory = temp_dir / "Folder Fallback"
+        output_directory.mkdir(parents=True, exist_ok=True)
+        create_tvshow = mocker.patch.object(archiver.metadata_generator, "create_tvshow_nfo")
+
+        created = archiver._create_tvshow_nfo_if_needed(
+            output_directory,
+            {},
+            "",
+            "",
+        )
+
+        assert created is True
+        create_tvshow.assert_called_once_with(
+            "Folder Fallback", output_directory / "tvshow.nfo"
+        )
+
     def test_run_refreshes_cookies_before_start_and_each_playlist(
         self, config, temp_dir, mocker
     ):
@@ -575,6 +659,29 @@ class TestPlaylistArchiver:
 
         assert cookie_refresher.refresh_to_file.call_count == 3
         assert process_playlist.call_count == 2
+
+    def test_run_passes_playlist_name_to_process_playlist(
+        self, config, temp_dir, mocker
+    ):
+        """Run should pass configured playlist name into process_playlist."""
+        config._config["archive"]["delay_between_playlists"] = 0
+        playlists_file = temp_dir / "dummy.toml"
+        playlists_file.write_text("")
+        mocker.patch.object(config, "get_playlists_file", return_value=playlists_file)
+        mocker.patch.object(
+            config,
+            "load_playlists",
+            return_value=[{"id": "abc", "path": "PathOne", "name": "Display One"}],
+        )
+
+        archiver = PlaylistArchiver(config)
+        process_playlist = mocker.patch.object(archiver, "process_playlist")
+        refresh_cookies = mocker.patch.object(archiver, "_refresh_cookies")
+
+        archiver.run()
+
+        refresh_cookies.assert_called()
+        process_playlist.assert_called_once_with("abc", "PathOne", "Display One")
 
     def test_run_cookie_refresh_failure_aborts_remaining_playlists(
         self, config, temp_dir, mocker
