@@ -29,10 +29,14 @@ max_retries = 3
 retry_backoff_factor = 2.0
 
 [download]
-format = "bestvideo+bestaudio/best"
+format = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+format_sort = "res,br,fps,container"
 merge_output_format = "mp4"
+write_info_json = true
+write_max_metadata_json = true
 write_subtitles = true
-subtitle_format = "vtt"
+embed_subtitles = true
+subtitle_format = "srt/best"
 convert_subtitles = "srt"
 subtitle_languages = ["en"]
 write_thumbnail = true
@@ -40,7 +44,7 @@ thumbnail_format = "jpg"
 max_concurrent_downloads = 1
 
 [filename]
-tokens = ["title", "channel"]
+tokens = ["upload_date", "title", "channel"]
 token_joiner = "_"
 date_format = "yyyy-mm-dd"
 missing_token_behavior = "omit"
@@ -64,13 +68,30 @@ max_file_size = "10MB"
 backup_count = 5
 
 [http]
-user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+user_agent = "Mozilla/5.0 (X11; Linux x86_64; rv:136.0) Gecko/20100101 Firefox/136.0"
 request_timeout = 30
 connect_timeout = 10
 cookie_file = "~/cookies.txt"
 
+[search]
+backend_order = ["youtube_html"]
+backend_strict = false
+fallback_enabled = false
+fallback_on_zero_results = false
+fallback_on_error = false
+target_channel_candidates = 60
+max_backend_rounds = 2
+instances = [
+  "https://yewtu.be",
+  "https://vid.puffyan.us",
+  "https://inv.nadeko.net",
+]
+max_results = 20
+youtube_html_timeout_seconds = 8
+yt_dlp_timeout_seconds = 20
+
 [cookies]
-source = "manual_file"
+source = "browser"
 browser = "firefox"
 profile = ""
 refresh_on_startup = true
@@ -92,7 +113,10 @@ nfo_format = "kodi"
 Global defaults are documented in snake_case under `[download]`.
 
 Per-playlist `[playlists.download]` accepts both canonical and yt-dlp-style keys:
+- `write_info_json` or `writeinfojson`
+- `write_max_metadata_json`
 - `write_subtitles` or `writesubtitles`
+- `embed_subtitles` or `embedsubtitles`
 - `subtitle_format` or `subtitlesformat`
 - `convert_subtitles` or `convertsubtitles`
 - `subtitle_languages` or `subtitleslangs`
@@ -116,3 +140,9 @@ Runtime validation includes:
 - per-token case modes support `preserve`, `lower`, `upper`, `title`
 - malformed or missing upload dates result in the `upload_date` token being omitted
 - legacy `filename.date_separator` is ignored when present
+- subtitle sidecars use `<base>.<lang>.<ext>` naming (for example `video.en.srt`)
+- subtitle conversion/embedding defaults target `.srt` sidecars and embedded subtitles while retaining sidecar files
+- when embedding is enabled with subtitle writing, sidecar subtitle files are preserved for external player/server discovery
+- archive runs write full yt-dlp metadata sidecars (`<base>.info.json`) by default
+- archive runs also write project-owned full metadata sidecars (`<base>.metadata.json`) by default
+- per-video NFO now includes episode-level tags (`showtitle`, `season`, `episode`, `aired`, `uniqueid`, runtime, ratings/tags/genres when available)
