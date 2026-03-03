@@ -14,6 +14,7 @@ from . import __version__
 from .config.settings import Config
 from .core.archive import PlaylistArchiver
 from .core.cookies import SUPPORTED_BROWSERS, BrowserCookieRefresher
+from .core.metadata_backfill import MetadataBackfiller
 from .core.playlist_writer import PlaylistEntry, PlaylistWriter
 from .core.search import InvidiousSearchService, SearchResult
 from .core.utils import setup_logging
@@ -208,7 +209,8 @@ def archive(
                 skip_initial_cookie_refresh = True
             except (CookieRefreshError, OSError, ValueError, RuntimeError) as e:
                 message = formatter.error(
-                    f"Cookie refresh failed at startup (browser={normalized_browser}) - {e!s}"
+                    f"Cookie refresh failed at startup "
+                    f"(browser={normalized_browser}) - {e!s}"
                 )
                 if message:
                     click.echo(message, err=True)
@@ -239,6 +241,101 @@ def archive(
                 click.echo(message, err=True)
         else:
             click.echo(f"Archive failed - {e!s}", err=True)
+        sys.exit(1)
+
+
+@cli.command(name="metadata-backfill")
+@click.option(
+    "--playlists",
+    "-p",
+    type=click.Path(exists=True, path_type=Path),
+    help="Path to playlists file (JSON or TOML)",
+)
+@click.option(
+    "--directory",
+    "-d",
+    type=click.Path(path_type=Path),
+    help="Archive directory path",
+)
+@click.option(
+    "--scope",
+    type=click.Choice(["full", "info-json"], case_sensitive=False),
+    default="full",
+    show_default=True,
+    help="Metadata sidecar scope to fetch",
+)
+@click.option(
+    "--refresh-existing/--no-refresh-existing",
+    default=False,
+    show_default=True,
+    help="Refresh metadata sidecars when .info.json already exists",
+)
+@click.option(
+    "--limit-per-playlist",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Maximum archived videos to process for each playlist",
+)
+@click.option(
+    "--continue-on-error/--fail-fast",
+    default=True,
+    show_default=True,
+    help="Continue processing remaining videos after a failure",
+)
+@click.pass_context
+def metadata_backfill(
+    ctx: click.Context,
+    playlists: Path | None,
+    directory: Path | None,
+    scope: str,
+    refresh_existing: bool,
+    limit_per_playlist: int | None,
+    continue_on_error: bool,
+) -> None:
+    """Backfill metadata sidecars for archived videos in .archive.txt."""
+    formatter = None
+    try:
+        config = ctx.obj["config"]
+        output_mode = ctx.obj.get("output_mode", "progress")
+        use_colors = ctx.obj.get("use_colors", True)
+
+        if playlists:
+            config.set_playlists_file(playlists)
+        if directory:
+            config.set_archive_directory(directory)
+
+        config.validate()
+        config.ensure_playlists_file()
+
+        formatter = get_formatter(use_colors, show_progress=False, mode=output_mode)
+
+        emit_rendered(formatter.logo_header())
+        emit_rendered(formatter.header(__version__))
+        emit_rendered(formatter.archive_directory(str(config.get_archive_directory())))
+
+        backfiller = MetadataBackfiller(config, formatter)
+        backfiller.run(
+            scope=scope.lower(),
+            refresh_existing=refresh_existing,
+            limit_per_playlist=limit_per_playlist,
+            continue_on_error=continue_on_error,
+        )
+
+    except KeyboardInterrupt:
+        if formatter:
+            message = formatter.error("Operation cancelled by user")
+            if message:
+                click.echo(message, err=True)
+        else:
+            click.echo("Operation cancelled by user", err=True)
+        sys.exit(130)
+    except (ConfigurationError, OSError, RuntimeError, ValueError) as e:
+        if formatter:
+            message = formatter.error(f"Metadata backfill failed - {e!s}")
+            if message:
+                click.echo(message, err=True)
+        else:
+            click.echo(f"Metadata backfill failed - {e!s}", err=True)
         sys.exit(1)
 
 
@@ -311,7 +408,9 @@ def search(ctx: click.Context, query: str | None, include_playlists: bool) -> No
             emit_rendered(formatter.warning("No matching channels or playlists found"))
             return
         backend_used = service.last_backend_used or "unknown"
-        channel_candidates = sum(1 for result in results if result.result_type == "channel")
+        channel_candidates = sum(
+            1 for result in results if result.result_type == "channel"
+        )
         formatter_info = getattr(formatter, "info", None)
         summary = f"Found {channel_candidates} channel candidates via {backend_used}"
         if callable(formatter_info):
@@ -348,7 +447,10 @@ def search(ctx: click.Context, query: str | None, include_playlists: bool) -> No
 
         writer = PlaylistWriter(config.get_playlists_file())
         added, skipped = writer.append_entries(entries)
-        emit_rendered(f"Search selection complete. Added: {added}, skipped duplicates: {skipped}")
+        emit_rendered(
+            f"Search selection complete. Added: {added}, "
+            f"skipped duplicates: {skipped}"
+        )
 
     except KeyboardInterrupt:
         if formatter:
@@ -455,7 +557,9 @@ def _format_result_row(index: int, result: SearchResult) -> str:
     )
 
 
-def _select_with_fzf(results: list[SearchResult]) -> tuple[list[SearchResult], bool] | None:
+def _select_with_fzf(
+    results: list[SearchResult]
+) -> tuple[list[SearchResult], bool] | None:
     if not shutil.which("fzf"):
         return None
 
