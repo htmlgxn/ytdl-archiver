@@ -9,8 +9,6 @@ retry_backoff_factor = 2.0
 format = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
 format_sort = "res:br:fps:container"
 merge_output_format = "mp4"
-recode_video = true
-postprocessor_args = ["VideoConvertor:-vcodec libx264 -acodec aac"]
 write_subtitles = true
 subtitle_format = "vtt"
 convert_subtitles = "srt"
