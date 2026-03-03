@@ -109,9 +109,11 @@ class TestConfig:
         ):
             Config()
 
-    def test_config_path_expansion(self):
+    def test_config_path_expansion(self, temp_config_dir):
         """Test configuration path expansion."""
-        config = Config()
+        # Create config with no user config file to use defaults
+        config_path = temp_config_dir / "nonexistent.toml"
+        config = Config(config_path)
 
         # Test that paths are expanded using the helper methods
         base_dir = config.get_archive_directory()
