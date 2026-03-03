@@ -182,3 +182,5 @@ Notes:
 - Metadata backfill (`--scope full`) also refreshes per-video `.nfo` and `<base>.metadata.json` using the same config gates.
 - Download runs reconcile fallback stems after completion when final metadata provides canonical token values.
 - Metadata backfill `--scope full` repairs legacy fallback stems and skips conflicting rename targets with warnings.
+- Metadata backfill reuses `archive.delay_between_videos` for pacing extractor requests and inter-video backfill cadence.
+- When a rate-limit response is detected during metadata backfill, default continue mode warns and pauses remaining videos in the current playlist.

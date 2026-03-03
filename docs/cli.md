@@ -60,6 +60,8 @@ Purpose:
 Options:
 - `-p, --playlists PATH`: playlists file (JSON or TOML)
 - `-d, --directory PATH`: archive base directory override
+- `--cookies-browser [firefox|chrome|chromium|brave|edge|opera|vivaldi|whale|safari]`: refresh cookies from browser before metadata-backfill run
+- `--cookies-profile TEXT`: browser profile name or full profile path for cookie extraction
 - `--scope [full|info-json]`: sidecar scope (`full` includes additional artifacts, `info-json` only writes info JSON)
 - `--refresh-existing / --no-refresh-existing`: refresh metadata sidecars when `.info.json` already exists
 - `--limit-per-playlist INTEGER`: max archived videos to process per playlist
@@ -69,6 +71,8 @@ Behavior notes:
 - In `full` scope, backfill refreshes enriched per-video `.nfo` and project-owned `<stem>.metadata.json` sidecars (respecting config gates), in addition to `.info.json`.
 - In `full` scope, backfill also repairs legacy fallback stems (for example `video-<id>_unknown-channel`) to canonical config-derived stems.
 - If a canonical target stem already exists, backfill skips the rename and emits a warning (no overwrite).
+- Backfill reuses `archive.delay_between_videos` as request pacing (inter-video delay and extractor request sleep).
+- If YouTube rate-limiting is detected, backfill warns and pauses the rest of the current playlist when running with `--continue-on-error`.
 
 ## `search`
 ```bash

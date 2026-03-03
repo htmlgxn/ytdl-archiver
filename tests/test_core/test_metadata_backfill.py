@@ -7,6 +7,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 import toml
+import yt_dlp
 
 from ytdl_archiver.core.metadata_backfill import MetadataBackfiller
 from ytdl_archiver.exceptions import ArchiveError
@@ -24,10 +25,17 @@ def _video_id_from_url(url: str) -> str:
 
 
 class _FakeYoutubeDL:
-    def __init__(self, opts, calls, crash_on_backfill_id: str | None = None):
+    def __init__(
+        self,
+        opts,
+        calls,
+        crash_on_backfill_id: str | None = None,
+        rate_limit_on_id: str | None = None,
+    ):
         self._opts = opts
         self._calls = calls
         self._crash_on_backfill_id = crash_on_backfill_id
+        self._rate_limit_on_id = rate_limit_on_id
 
     def __enter__(self):
         return self
@@ -39,11 +47,13 @@ class _FakeYoutubeDL:
         video_id = _video_id_from_url(url)
         self._calls.append({"opts": self._opts, "url": url, "download": download})
 
-        if self._opts.get("writeinfojson") and video_id == self._crash_on_backfill_id:
-            raise RuntimeError("boom")
+        if video_id == self._rate_limit_on_id:
+            raise yt_dlp.DownloadError(
+                "This content isn't available, try again later. Your account has been rate-limited by YouTube for up to an hour."
+            )
 
-        if self._opts.get("writeinfojson"):
-            return {"id": video_id}
+        if video_id == self._crash_on_backfill_id:
+            raise RuntimeError("boom")
 
         return {
             "id": video_id,
@@ -79,16 +89,9 @@ class TestMetadataBackfiller:
 
         assert totals == {"updated": 2, "skipped_existing": 0, "failed": 0}
         assert all(call["download"] is False for call in calls)
-
-        sidecar_opts = [call["opts"] for call in calls if call["opts"].get("writeinfojson")]
-        assert len(sidecar_opts) == 2
-        for opts in sidecar_opts:
-            assert opts["skip_download"] is True
-            assert opts["writesubtitles"] is True
-            assert opts["writeautomaticsub"] is True
-            assert opts["writethumbnail"] is True
-            assert opts["writecomments"] is True
-            assert opts["outtmpl"]["subtitle"].endswith(".%(lang)s.%(ext)s")
+        assert len(calls) == 2
+        assert (playlist_dir / "abc123.info.json").exists()
+        assert (playlist_dir / "def456.info.json").exists()
 
     def test_backfill_skips_existing_info_json_when_refresh_disabled(
         self, config, temp_dir, mocker
@@ -166,10 +169,8 @@ class TestMetadataBackfiller:
         totals = backfiller.run(scope="info-json")
         assert totals == {"updated": 1, "skipped_existing": 0, "failed": 0}
 
-        sidecar_calls = [call for call in calls if call["opts"].get("writeinfojson")]
-        assert len(sidecar_calls) == 1
-        default_outtmpl = sidecar_calls[0]["opts"]["outtmpl"]["default"]
-        assert "legacy-abc123.%(ext)s" in default_outtmpl
+        assert len(calls) == 1
+        assert (playlist_dir / "legacy-abc123.info.json").exists()
 
     def test_backfill_tvshow_nfo_uses_playlist_name_for_any_playlist_type(
         self, config, temp_dir, mocker
@@ -260,7 +261,7 @@ class TestMetadataBackfiller:
         assert totals == {"updated": 1, "skipped_existing": 0, "failed": 0}
         create_nfo_mock.assert_called_once()
         write_metadata_mock.assert_called_once()
-        assert not any(call["opts"].get("writeinfojson") for call in calls)
+        assert len(calls) == 1
 
     def test_full_scope_respects_write_max_metadata_json_disabled(
         self, config, temp_dir, mocker
@@ -369,3 +370,77 @@ class TestMetadataBackfiller:
         ]
         assert warning_calls
         assert "Rename skipped: target stem already exists" in warning_calls[-1].args[2]
+
+    def test_backfill_applies_delay_between_videos(self, config, temp_dir, mocker):
+        base_dir = temp_dir / "archive"
+        playlist_path = "ExamplePlaylist"
+        playlist_dir = base_dir / playlist_path
+        playlist_dir.mkdir(parents=True, exist_ok=True)
+        (playlist_dir / ".archive.txt").write_text("abc123\ndef456\n", encoding="utf-8")
+        _write_playlists(config, [{"id": "PLx", "path": playlist_path}])
+
+        config._config["archive"]["base_directory"] = str(base_dir)
+        config._config["archive"]["delay_between_videos"] = 2
+        calls: list[dict[str, object]] = []
+        mocker.patch(
+            "ytdl_archiver.core.metadata_backfill.yt_dlp.YoutubeDL",
+            side_effect=lambda opts: _FakeYoutubeDL(opts, calls),
+        )
+        sleep_mock = mocker.patch("ytdl_archiver.core.metadata_backfill.time.sleep")
+
+        backfiller = MetadataBackfiller(config)
+        totals = backfiller.run(scope="info-json")
+
+        assert totals == {"updated": 2, "skipped_existing": 0, "failed": 0}
+        sleep_mock.assert_called_once_with(2.0)
+
+    def test_backfill_rate_limit_continues_and_stops_playlist(
+        self, config, temp_dir, mocker
+    ):
+        base_dir = temp_dir / "archive"
+        playlist_path = "ExamplePlaylist"
+        playlist_dir = base_dir / playlist_path
+        playlist_dir.mkdir(parents=True, exist_ok=True)
+        (playlist_dir / ".archive.txt").write_text("ok1\nratelimit\nlater3\n", encoding="utf-8")
+        _write_playlists(config, [{"id": "PLx", "path": playlist_path}])
+        config._config["archive"]["base_directory"] = str(base_dir)
+        config._config["archive"]["delay_between_videos"] = 0
+
+        calls: list[dict[str, object]] = []
+        mocker.patch(
+            "ytdl_archiver.core.metadata_backfill.yt_dlp.YoutubeDL",
+            side_effect=lambda opts: _FakeYoutubeDL(opts, calls, rate_limit_on_id="ratelimit"),
+        )
+        formatter = mocker.Mock()
+        emit_msg = mocker.patch("ytdl_archiver.core.metadata_backfill.emit_formatter_message")
+
+        backfiller = MetadataBackfiller(config, formatter=formatter)
+        totals = backfiller.run(scope="info-json", continue_on_error=True)
+
+        assert totals == {"updated": 1, "skipped_existing": 0, "failed": 1}
+        # Should not hammer third video after limit hit.
+        assert len(calls) == 2
+        warning_calls = [
+            call for call in emit_msg.call_args_list if call.args[1] == "warning"
+        ]
+        assert warning_calls
+        assert "YouTube rate limit detected during metadata backfill" in warning_calls[0].args[2]
+
+    def test_backfill_rate_limit_fail_fast_raises(self, config, temp_dir, mocker):
+        base_dir = temp_dir / "archive"
+        playlist_path = "ExamplePlaylist"
+        playlist_dir = base_dir / playlist_path
+        playlist_dir.mkdir(parents=True, exist_ok=True)
+        (playlist_dir / ".archive.txt").write_text("ratelimit\n", encoding="utf-8")
+        _write_playlists(config, [{"id": "PLx", "path": playlist_path}])
+        config._config["archive"]["base_directory"] = str(base_dir)
+
+        calls: list[dict[str, object]] = []
+        mocker.patch(
+            "ytdl_archiver.core.metadata_backfill.yt_dlp.YoutubeDL",
+            side_effect=lambda opts: _FakeYoutubeDL(opts, calls, rate_limit_on_id="ratelimit"),
+        )
+        backfiller = MetadataBackfiller(config)
+
+        with pytest.raises(ArchiveError, match="Metadata backfill failed for ratelimit"):
+            backfiller.run(scope="info-json", continue_on_error=False)
