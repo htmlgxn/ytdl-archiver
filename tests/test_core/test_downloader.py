@@ -1,9 +1,11 @@
 """Tests for YouTube downloader functionality."""
 
 import json
+import threading
 from unittest.mock import Mock, patch
 
 import pytest
+import yt_dlp
 
 from ytdl_archiver.core.downloader import (
     ProgressCallback,
@@ -313,8 +315,12 @@ class TestYouTubeDownloader:
 
         mocker.patch.object(downloader, "get_metadata", return_value=None)
         direct_download = mocker.patch.object(
-            downloader, "download_video", return_value={"id": "test_video"}
+            downloader,
+            "_download_with_effective_config",
+            return_value={"id": "test_video"},
         )
+        mocker.patch.object(downloader, "_emit_post_download_generated_lines")
+        mocker.patch.object(downloader, "_write_max_metadata_sidecar")
 
         result = downloader.download_video_with_config(
             "https://www.youtube.com/watch?v=test_video",
@@ -325,7 +331,7 @@ class TestYouTubeDownloader:
         assert result == {"id": "test_video"}
         assert direct_download.call_count == 1
 
-        _, output_template, _, filename = direct_download.call_args.args
+        _, output_template, _, filename, _ = direct_download.call_args.args
         assert "video-test_video_unknown-channel" in output_template
         assert filename == "video-test_video_unknown-channel"
 
@@ -573,6 +579,123 @@ class TestYouTubeDownloader:
         assert not (temp_dir / f"{base_name}.metadata.json").exists()
         resolved_path = temp_dir / "custom-final-name.metadata.json"
         assert resolved_path.exists()
+
+    def test_download_video_with_config_writes_metadata_sidecar_with_canonical_stem_when_no_media(
+        self, config, temp_dir, mocker
+    ):
+        """Test metadata sidecar falls back to canonical stem when media path is unavailable."""
+        config._config["archive"]["delay_between_videos"] = 0
+        downloader = YouTubeDownloader(config)
+        video_url = "https://www.youtube.com/watch?v=test_video"
+        metadata = {
+            "id": "test_video",
+            "title": "Test Video",
+            "uploader": "Test Channel",
+            "upload_date": "20240101",
+        }
+        filename = downloader._build_output_filename(metadata, video_url)
+        (temp_dir / f"{filename}.info.json").write_text("{}", encoding="utf-8")
+
+        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
+        mocker.patch.object(
+            downloader,
+            "_download_with_effective_config",
+            return_value={"id": "test_video", "title": "Test Video"},
+        )
+        mocker.patch.object(downloader, "_emit_post_download_generated_lines")
+
+        downloader.download_video_with_config(video_url, temp_dir, {})
+
+        assert (temp_dir / f"{filename}.metadata.json").exists()
+
+    def test_write_max_metadata_sidecar_emits_warning_on_failure(
+        self, config, temp_dir, mocker
+    ):
+        """Test metadata sidecar failures surface a default-mode warning."""
+        downloader = YouTubeDownloader(config, formatter=Mock())
+        formatter = downloader.formatter
+        assert formatter is not None
+        formatter.warning.return_value = "warn-line"
+
+        mocker.patch("pathlib.Path.write_text", side_effect=OSError("disk full"))
+
+        with patch("ytdl_archiver.core.downloader.emit_formatter_message") as emit_msg:
+            downloader._write_max_metadata_sidecar(
+                base_path=temp_dir / "video",
+                video_url="https://www.youtube.com/watch?v=test_video",
+                download_result={"id": "test_video", "title": "Test Video"},
+            )
+
+        emit_msg.assert_any_call(
+            formatter,
+            "warning",
+            "Metadata sidecar not written (OSError: disk full)",
+        )
+
+    def test_write_max_metadata_sidecar_handles_thread_lock_without_warning(
+        self, config, temp_dir
+    ):
+        """Test sidecar writing tolerates non-pickleable lock objects."""
+        downloader = YouTubeDownloader(config, formatter=Mock())
+        formatter = downloader.formatter
+        assert formatter is not None
+        formatter.warning.return_value = "warn-line"
+
+        result = {
+            "id": "test_video",
+            "title": "Test Video",
+            "extractor": "youtube",
+            "unsafe_lock": threading.Lock(),
+        }
+        base_path = temp_dir / "video"
+
+        with patch("ytdl_archiver.core.downloader.emit_formatter_message") as emit_msg:
+            downloader._write_max_metadata_sidecar(
+                base_path=base_path,
+                video_url="https://www.youtube.com/watch?v=test_video",
+                download_result=result,
+            )
+
+        metadata_path = temp_dir / "video.metadata.json"
+        assert metadata_path.exists()
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        assert payload["metadata"]["id"] == "test_video"
+        warning_calls = [call for call in emit_msg.call_args_list if call.args[1] == "warning"]
+        assert warning_calls == []
+
+    def test_write_max_metadata_sidecar_uses_default_str_serialization_fallback(
+        self, config, temp_dir, mocker
+    ):
+        """Test fallback serialization for non-JSON sanitized values."""
+        downloader = YouTubeDownloader(config, formatter=Mock())
+        formatter = downloader.formatter
+        assert formatter is not None
+        formatter.warning.return_value = "warn-line"
+
+        class NonJsonValue:
+            pass
+
+        mocker.patch.object(
+            yt_dlp.YoutubeDL,
+            "sanitize_info",
+            return_value={"id": "test_video", "non_json": NonJsonValue()},
+        )
+        base_path = temp_dir / "video-fallback"
+
+        with patch("ytdl_archiver.core.downloader.emit_formatter_message") as emit_msg:
+            downloader._write_max_metadata_sidecar(
+                base_path=base_path,
+                video_url="https://www.youtube.com/watch?v=test_video",
+                download_result={"id": "test_video"},
+            )
+
+        metadata_path = temp_dir / "video-fallback.metadata.json"
+        assert metadata_path.exists()
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        assert payload["metadata"]["id"] == "test_video"
+        assert isinstance(payload["metadata"]["non_json"], str)
+        warning_calls = [call for call in emit_msg.call_args_list if call.args[1] == "warning"]
+        assert warning_calls == []
 
     def test_download_video_with_config_disables_max_metadata_json_when_configured(
         self, config, temp_dir, mocker

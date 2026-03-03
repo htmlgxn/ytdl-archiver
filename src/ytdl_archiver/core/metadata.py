@@ -1,5 +1,6 @@
 """Metadata generation for media servers."""
 
+import html
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -125,12 +126,22 @@ class MetadataGenerator:
             return ""
 
     @staticmethod
-    def _coerce_str_list(value: Any) -> list[str]:
+    def _normalize_text(value: Any) -> str:
+        """Normalize text values before XML escaping."""
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        # Normalize pre-escaped entities (e.g. &amp;) before final XML escape.
+        text = html.unescape(text)
+        return " ".join(text.split())
+
+    @classmethod
+    def _coerce_str_list(cls, value: Any) -> list[str]:
         if not isinstance(value, list):
             return []
         out: list[str] = []
         for entry in value:
-            item = str(entry or "").strip()
+            item = cls._normalize_text(entry)
             if item:
                 out.append(item)
         return out
@@ -138,14 +149,16 @@ class MetadataGenerator:
     def _build_nfo_fields(
         self, metadata: dict[str, Any], nfo_path: Path | None = None
     ) -> NFOFields:
-        title = str(metadata.get("title") or "Unknown Title")
-        showtitle = str(
+        title = self._normalize_text(metadata.get("title")) or "Unknown Title"
+        showtitle = self._normalize_text(
             metadata.get("channel")
             or metadata.get("uploader")
             or metadata.get("uploader_id")
             or "Unknown Channel"
         )
-        description = str(metadata.get("description") or "Unknown Description")
+        description = (
+            self._normalize_text(metadata.get("description")) or "Unknown Description"
+        )
         outline = " ".join(description.strip().split())
         outline = outline[:197] + "..." if len(outline) > 200 else outline
 
@@ -171,7 +184,7 @@ class MetadataGenerator:
 
         thumb = self._first_thumbnail_sidecar(nfo_path)
         if not thumb:
-            thumb = str(metadata.get("thumbnail") or "")
+            thumb = self._normalize_text(metadata.get("thumbnail"))
 
         like_count = self._coerce_int(metadata.get("like_count"), default=0)
         view_count = self._coerce_int(metadata.get("view_count"), default=0)

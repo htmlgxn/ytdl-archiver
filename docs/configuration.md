@@ -170,3 +170,7 @@ Given output stem `<base>` for a downloaded video:
 Notes:
 - Subtitles are embedded by default and sidecars are retained.
 - Sidecar naming follows `<base>.<lang>.<ext>` for media player/media server auto-detection.
+- NFO XML escapes entities by design (for example `People &amp; Blogs` in raw XML corresponds to `People & Blogs` when parsed).
+- Archive runs now surface a warning in default mode when `<base>.metadata.json` cannot be written.
+- `<base>.metadata.json` sidecars resolve from final media stem when available, with canonical-stem fallback alignment.
+- Metadata sidecar serialization tolerates non-pickleable runtime objects from extractor results.

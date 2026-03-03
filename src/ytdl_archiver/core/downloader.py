@@ -4,7 +4,6 @@ import json
 import logging
 import re
 import time
-from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, ClassVar, cast
@@ -692,7 +691,12 @@ class YouTubeDownloader:
         media_path = cls._resolve_final_media_path(output_directory, filename, download_result)
         if media_path is not None:
             return media_path.with_suffix("")
-        return output_directory / filename
+
+        canonical_base = output_directory / filename
+        canonical_info_json = canonical_base.with_suffix(".info.json")
+        if canonical_info_json.exists() and canonical_info_json.is_file():
+            return canonical_base
+        return canonical_base
 
     def _emit_post_download_generated_lines(
         self,
@@ -759,26 +763,45 @@ class YouTubeDownloader:
             video_url=video_url,
         )
         try:
-            sanitized_info = yt_dlp.YoutubeDL.sanitize_info(deepcopy(download_result))
+            sanitized_info = yt_dlp.YoutubeDL.sanitize_info(download_result)
             payload = {
                 "video_url": video_url,
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "extractor": str(download_result.get("extractor") or ""),
                 "metadata": sanitized_info,
             }
+            try:
+                serialized_payload = json.dumps(
+                    payload, indent=2, sort_keys=True, ensure_ascii=False
+                )
+            except (TypeError, ValueError):
+                serialized_payload = json.dumps(
+                    payload,
+                    indent=2,
+                    sort_keys=True,
+                    ensure_ascii=False,
+                    default=str,
+                )
             tmp_path.write_text(
-                json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+                serialized_payload + "\n",
                 encoding="utf-8",
             )
             tmp_path.replace(metadata_path)
+            metadata_size = metadata_path.stat().st_size
             self._emit_verbose_debug(
                 "Metadata sidecar written",
                 metadata_path=str(metadata_path),
                 video_url=video_url,
+                size_bytes=metadata_size,
             )
         except (OSError, TypeError, ValueError) as e:
             if tmp_path.exists():
                 tmp_path.unlink(missing_ok=True)
+            emit_formatter_message(
+                self.formatter,
+                "warning",
+                f"Metadata sidecar not written ({type(e).__name__}: {e!s})",
+            )
             self._emit_verbose_debug(
                 f"Failed to write metadata sidecar ({type(e).__name__}: {e!s})",
                 metadata_path=str(metadata_path),
