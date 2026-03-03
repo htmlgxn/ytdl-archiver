@@ -1,6 +1,6 @@
 [project]
 name = "ytdl-archiver"
-version = "0.3.0"
+version = "0.3.1"
 description = "Modern Python CLI for archiving YouTube playlists with media-server metadata support"
 readme = "README.md"
 requires-python = ">=3.14"
