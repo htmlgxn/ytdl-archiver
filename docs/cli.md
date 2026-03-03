@@ -55,6 +55,7 @@ ytdl-archiver metadata-backfill [OPTIONS]
 
 Purpose:
 - Backfill metadata sidecars for IDs already present in playlist `.archive.txt` files.
+- Uses `[[playlists]].name` as `tvshow.nfo` title (fallback: `path`) to match archive behavior.
 
 Options:
 - `-p, --playlists PATH`: playlists file (JSON or TOML)
@@ -63,6 +64,9 @@ Options:
 - `--refresh-existing / --no-refresh-existing`: refresh metadata sidecars when `.info.json` already exists
 - `--limit-per-playlist INTEGER`: max archived videos to process per playlist
 - `--continue-on-error / --fail-fast`: continue processing after errors or stop on first failure
+
+Behavior notes:
+- In `full` scope, backfill refreshes enriched per-video `.nfo` and project-owned `<stem>.metadata.json` sidecars (respecting config gates), in addition to `.info.json`.
 
 ## `search`
 ```bash

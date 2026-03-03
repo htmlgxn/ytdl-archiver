@@ -111,7 +111,7 @@ class TestMetadataBackfiller:
         )
 
         backfiller = MetadataBackfiller(config)
-        totals = backfiller.run(scope="full", refresh_existing=False)
+        totals = backfiller.run(scope="info-json", refresh_existing=False)
 
         assert totals == {"updated": 0, "skipped_existing": 1, "failed": 0}
         assert not any(call["opts"].get("writeinfojson") for call in calls)
@@ -170,3 +170,122 @@ class TestMetadataBackfiller:
         assert len(sidecar_calls) == 1
         default_outtmpl = sidecar_calls[0]["opts"]["outtmpl"]["default"]
         assert "legacy-abc123.%(ext)s" in default_outtmpl
+
+    def test_backfill_tvshow_nfo_uses_playlist_name_for_any_playlist_type(
+        self, config, temp_dir, mocker
+    ):
+        base_dir = temp_dir / "archive"
+        playlist_dir = base_dir / "test_playlist"
+        playlist_dir.mkdir(parents=True, exist_ok=True)
+        (playlist_dir / ".archive.txt").write_text("", encoding="utf-8")
+        _write_playlists(
+            config,
+            [
+                {
+                    "id": "UUW5OrUZ4SeUYkUg1XqcjFYA",
+                    "path": "test_playlist",
+                    "name": "GeoWizard",
+                }
+            ],
+        )
+
+        config._config["archive"]["base_directory"] = str(base_dir)
+
+        calls: list[dict[str, object]] = []
+        mocker.patch(
+            "ytdl_archiver.core.metadata_backfill.yt_dlp.YoutubeDL",
+            side_effect=lambda opts: _FakeYoutubeDL(opts, calls),
+        )
+
+        backfiller = MetadataBackfiller(config)
+        totals = backfiller.run(scope="info-json")
+        assert totals == {"updated": 0, "skipped_existing": 0, "failed": 0}
+
+        tvshow_nfo = playlist_dir / "tvshow.nfo"
+        assert tvshow_nfo.exists()
+        assert "<title>GeoWizard</title>" in tvshow_nfo.read_text(encoding="utf-8")
+
+    def test_backfill_tvshow_nfo_falls_back_to_playlist_path(
+        self, config, temp_dir, mocker
+    ):
+        base_dir = temp_dir / "archive"
+        playlist_dir = base_dir / "custom_folder"
+        playlist_dir.mkdir(parents=True, exist_ok=True)
+        (playlist_dir / ".archive.txt").write_text("", encoding="utf-8")
+        _write_playlists(
+            config,
+            [{"id": "PLOgg6_QCO8CeFd55aR1RgzSQOOWhR12uj", "path": "custom_folder"}],
+        )
+        config._config["archive"]["base_directory"] = str(base_dir)
+
+        calls: list[dict[str, object]] = []
+        mocker.patch(
+            "ytdl_archiver.core.metadata_backfill.yt_dlp.YoutubeDL",
+            side_effect=lambda opts: _FakeYoutubeDL(opts, calls),
+        )
+
+        backfiller = MetadataBackfiller(config)
+        backfiller.run(scope="info-json")
+
+        tvshow_nfo = playlist_dir / "tvshow.nfo"
+        assert tvshow_nfo.exists()
+        assert "<title>custom_folder</title>" in tvshow_nfo.read_text(encoding="utf-8")
+
+    def test_full_scope_writes_nfo_and_metadata_when_info_json_exists(
+        self, config, temp_dir, mocker
+    ):
+        base_dir = temp_dir / "archive"
+        playlist_path = "ExamplePlaylist"
+        playlist_dir = base_dir / playlist_path
+        playlist_dir.mkdir(parents=True, exist_ok=True)
+        (playlist_dir / ".archive.txt").write_text("abc123\n", encoding="utf-8")
+        (playlist_dir / "abc123.info.json").write_text("{}", encoding="utf-8")
+        _write_playlists(config, [{"id": "PLx", "path": playlist_path, "name": "Named"}])
+        config._config["archive"]["base_directory"] = str(base_dir)
+        config._config["filename"]["tokens"] = ["video_id"]
+
+        calls: list[dict[str, object]] = []
+        mocker.patch(
+            "ytdl_archiver.core.metadata_backfill.yt_dlp.YoutubeDL",
+            side_effect=lambda opts: _FakeYoutubeDL(opts, calls),
+        )
+
+        backfiller = MetadataBackfiller(config)
+        create_nfo_mock = mocker.patch.object(backfiller.metadata_generator, "create_nfo_file")
+        write_metadata_mock = mocker.patch.object(
+            backfiller.downloader, "_write_max_metadata_sidecar"
+        )
+
+        totals = backfiller.run(scope="full", refresh_existing=False)
+        assert totals == {"updated": 1, "skipped_existing": 0, "failed": 0}
+        create_nfo_mock.assert_called_once()
+        write_metadata_mock.assert_called_once()
+        assert not any(call["opts"].get("writeinfojson") for call in calls)
+
+    def test_full_scope_respects_write_max_metadata_json_disabled(
+        self, config, temp_dir, mocker
+    ):
+        base_dir = temp_dir / "archive"
+        playlist_path = "ExamplePlaylist"
+        playlist_dir = base_dir / playlist_path
+        playlist_dir.mkdir(parents=True, exist_ok=True)
+        (playlist_dir / ".archive.txt").write_text("abc123\n", encoding="utf-8")
+        _write_playlists(config, [{"id": "PLx", "path": playlist_path, "name": "Named"}])
+        config._config["archive"]["base_directory"] = str(base_dir)
+        config._config["filename"]["tokens"] = ["video_id"]
+        config._config["download"]["write_max_metadata_json"] = False
+
+        calls: list[dict[str, object]] = []
+        mocker.patch(
+            "ytdl_archiver.core.metadata_backfill.yt_dlp.YoutubeDL",
+            side_effect=lambda opts: _FakeYoutubeDL(opts, calls),
+        )
+
+        backfiller = MetadataBackfiller(config)
+        write_metadata_mock = mocker.patch.object(
+            backfiller.downloader, "_write_max_metadata_sidecar"
+        )
+
+        totals = backfiller.run(scope="full", refresh_existing=True)
+        assert totals == {"updated": 1, "skipped_existing": 0, "failed": 0}
+        write_metadata_mock.assert_not_called()
