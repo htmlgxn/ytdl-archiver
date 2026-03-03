@@ -253,7 +253,9 @@ class PlaylistArchiver:
             )
             raise ArchiveError(message) from e
 
-    def process_playlist(self, playlist_id: str, playlist_path: str) -> None:
+    def process_playlist(
+        self, playlist_id: str, playlist_path: str, playlist_name: str | None = None
+    ) -> None:
         """Process a single playlist."""
         base_directory = self.config.get_archive_directory()
         output_directory = base_directory / playlist_path
@@ -380,7 +382,9 @@ class PlaylistArchiver:
                 continue
 
         # Create tvshow.nfo for Jellyfin TV show library treatment
-        self._create_tvshow_nfo_if_needed(output_directory, playlist_info)
+        self._create_tvshow_nfo_if_needed(
+            output_directory, playlist_info, playlist_name, playlist_path
+        )
 
         if self.formatter:
             emit_rendered(self.formatter.playlist_summary(stats))
@@ -524,7 +528,11 @@ class PlaylistArchiver:
             return False
 
     def _create_tvshow_nfo_if_needed(
-        self, output_directory: Path, playlist_info: dict[str, Any]
+        self,
+        output_directory: Path,
+        playlist_info: dict[str, Any],
+        playlist_name: str | None,
+        playlist_path: str,
     ) -> bool:
         """Create tvshow.nfo for Jellyfin TV show library treatment if not exists."""
         if not self.config.get("media_server.generate_nfo", True):
@@ -535,16 +543,43 @@ class PlaylistArchiver:
             return False
 
         try:
-            # Extract channel name from playlist info
-            channel_name = self._extract_channel_name(playlist_info)
-            if channel_name:
-                self.metadata_generator.create_tvshow_nfo(channel_name, tvshow_nfo_path)
+            tvshow_title = self._resolve_tvshow_title(
+                output_directory=output_directory,
+                playlist_info=playlist_info,
+                playlist_name=playlist_name,
+                playlist_path=playlist_path,
+            )
+            if tvshow_title:
+                self.metadata_generator.create_tvshow_nfo(tvshow_title, tvshow_nfo_path)
                 return True
             return False
 
         except (MetadataError, OSError, ValueError, RuntimeError, TypeError) as e:
             logger.exception("Failed to generate TV show NFO", extra={"error": str(e)})
             return False
+
+    def _resolve_tvshow_title(
+        self,
+        *,
+        output_directory: Path,
+        playlist_info: dict[str, Any],
+        playlist_name: str | None,
+        playlist_path: str,
+    ) -> str | None:
+        """Resolve tvshow.nfo title from playlist config values."""
+        configured_name = str(playlist_name or "").strip()
+        if configured_name:
+            return configured_name
+
+        path_name = str(playlist_path or "").strip().rstrip("/\\")
+        if path_name:
+            return Path(path_name).name
+
+        folder_name = output_directory.name.strip()
+        if folder_name:
+            return folder_name
+
+        return self._extract_channel_name(playlist_info)
 
     def _extract_channel_name(self, playlist_info: dict[str, Any]) -> str | None:
         """Extract channel name from playlist information."""
@@ -596,6 +631,7 @@ class PlaylistArchiver:
         for i, playlist in enumerate(playlists):
             playlist_id = playlist.get("id")
             playlist_path = playlist.get("path")
+            playlist_name = playlist.get("name")
 
             if not playlist_id or not playlist_path:
                 if self.formatter:
@@ -609,7 +645,7 @@ class PlaylistArchiver:
             self._refresh_cookies(f"before playlist {playlist_path}")
 
             try:
-                self.process_playlist(playlist_id, playlist_path)
+                self.process_playlist(playlist_id, playlist_path, playlist_name)
 
                 # Add delay between playlists
                 if i < len(playlists) - 1:  # Not the last playlist
