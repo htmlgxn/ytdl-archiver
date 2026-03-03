@@ -555,14 +555,17 @@ class YouTubeDownloader:
     def get_metadata(self, video_url: str) -> dict[str, Any] | None:
         """Get video metadata without downloading."""
         opts = self._build_runtime_ydl_options(include_progress_hooks=False)
+        
+        # TEMPORARY: Disable ignoreerrors to see actual yt-dlp errors
+        opts["ignoreerrors"] = False
 
         verbose = self.config.get("logging.level") == "DEBUG"
 
         # DEBUG: Print options to stderr
         print(f"DEBUG: get_metadata {video_url}", file=sys.stderr, flush=True)
         print(f"DEBUG: cookiefile={opts.get('cookiefile')}", file=sys.stderr, flush=True)
-        print(f"DEBUG: format={opts.get('format')}", file=sys.stderr, flush=True)
-        print(f"DEBUG: format_sort={opts.get('format_sort')}", file=sys.stderr, flush=True)
+        print(f"DEBUG: format={repr(opts.get('format'))}", file=sys.stderr, flush=True)
+        print(f"DEBUG: format_sort={repr(opts.get('format_sort'))}", file=sys.stderr, flush=True)
         print(f"DEBUG: extractor_args={opts.get('extractor_args')}", file=sys.stderr, flush=True)
 
         try:
