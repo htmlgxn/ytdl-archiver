@@ -350,6 +350,55 @@ class TestPlaylistArchiver:
         assert created is True
         create_nfo.assert_called_once_with(metadata, temp_dir / f"{expected_stem}.nfo")
 
+    def test_generate_nfo_uses_mkv_when_mp4_missing(self, config, temp_dir, mocker):
+        """Test NFO generation supports mkv final media."""
+        archiver = PlaylistArchiver(config)
+        metadata = {
+            "id": "abc123",
+            "title": "Video",
+            "uploader": "Channel",
+            "upload_date": "20250131",
+        }
+        stem = "2025-01-31_video_channel"
+        (temp_dir / f"{stem}.mkv").write_bytes(b"video")
+
+        create_nfo = mocker.patch.object(archiver.metadata_generator, "create_nfo_file")
+        created = archiver._generate_nfo_if_needed(
+            metadata,
+            temp_dir,
+            "https://www.youtube.com/watch?v=abc123",
+        )
+
+        assert created is True
+        create_nfo.assert_called_once_with(metadata, temp_dir / f"{stem}.nfo")
+
+    def test_generate_nfo_uses_download_result_filepath_for_shorts(
+        self, config, temp_dir, mocker
+    ):
+        """Test NFO generation follows final media path from download result."""
+        archiver = PlaylistArchiver(config)
+        metadata = {
+            "id": "abc123",
+            "title": "Video",
+            "uploader": "Channel",
+            "upload_date": "20250131",
+        }
+        shorts_dir = temp_dir / "YouTube Shorts"
+        shorts_dir.mkdir(parents=True, exist_ok=True)
+        short_path = shorts_dir / "custom-short-name.mkv"
+        short_path.write_bytes(b"video")
+
+        create_nfo = mocker.patch.object(archiver.metadata_generator, "create_nfo_file")
+        created = archiver._generate_nfo_if_needed(
+            metadata,
+            temp_dir,
+            "https://www.youtube.com/watch?v=abc123",
+            {"requested_downloads": [{"filepath": str(short_path)}]},
+        )
+
+        assert created is True
+        create_nfo.assert_called_once_with(metadata, shorts_dir / "custom-short-name.nfo")
+
     def test_process_playlist_passes_download_result_to_nfo_generation(
         self, config, temp_dir, mocker
     ):

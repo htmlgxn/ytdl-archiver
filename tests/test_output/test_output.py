@@ -159,6 +159,14 @@ class TestProgressFormatter:
         assert "Test Video" in result
         assert "[1080p, 100mb]" in result
 
+    def test_container_generated_mkv(self):
+        """Test generic container generated output for mkv."""
+        formatter = ProgressFormatter(use_colors=False)
+        result = formatter.container_generated("Test Video", ".mkv", "2160p", "2gb")
+        assert ".mkv generated:" in result
+        assert "Test Video" in result
+        assert "[2160p, 2gb]" in result
+
     def test_subtitle_downloaded(self):
         """Test subtitle downloaded output."""
         formatter = ProgressFormatter(use_colors=False)
@@ -166,6 +174,14 @@ class TestProgressFormatter:
         assert "Downloaded subtitles:" in result
         assert "Test Video" in result
         assert "[.vtt -> .srt]" in result
+
+    def test_status_labels_align_with_subtitle_width(self):
+        """Test status labels share a consistent padded width."""
+        formatter = ProgressFormatter(use_colors=False)
+        video_result = formatter.video_complete("Test Video", "1080p", ".mp4", "100mb")
+        subtitle_result = formatter.subtitle_downloaded("Test Video", ".srt")
+        assert "Downloaded:           Test Video" in video_result
+        assert "Downloaded subtitles: Test Video" in subtitle_result
 
     def test_warning(self):
         """Test warning output."""
