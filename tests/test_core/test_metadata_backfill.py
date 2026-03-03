@@ -289,3 +289,83 @@ class TestMetadataBackfiller:
         totals = backfiller.run(scope="full", refresh_existing=True)
         assert totals == {"updated": 1, "skipped_existing": 0, "failed": 0}
         write_metadata_mock.assert_not_called()
+
+    def test_full_scope_renames_fallback_stem_to_canonical(
+        self, config, temp_dir, mocker
+    ):
+        base_dir = temp_dir / "archive"
+        playlist_path = "ExamplePlaylist"
+        playlist_dir = base_dir / playlist_path
+        playlist_dir.mkdir(parents=True, exist_ok=True)
+        (playlist_dir / ".archive.txt").write_text("abc123\n", encoding="utf-8")
+        _write_playlists(config, [{"id": "PLx", "path": playlist_path, "name": "Named"}])
+        config._config["archive"]["base_directory"] = str(base_dir)
+        config._config["archive"]["delay_between_videos"] = 0
+
+        fallback_stem = "video-abc123_unknown-channel"
+        (playlist_dir / f"{fallback_stem}.mp4").write_bytes(b"video")
+        (playlist_dir / f"{fallback_stem}.info.json").write_text("{}", encoding="utf-8")
+        (playlist_dir / f"{fallback_stem}.nfo").write_text("nfo", encoding="utf-8")
+
+        calls: list[dict[str, object]] = []
+        mocker.patch(
+            "ytdl_archiver.core.metadata_backfill.yt_dlp.YoutubeDL",
+            side_effect=lambda opts: _FakeYoutubeDL(opts, calls),
+        )
+
+        backfiller = MetadataBackfiller(config)
+        write_metadata_mock = mocker.patch.object(
+            backfiller.downloader, "_write_max_metadata_sidecar"
+        )
+        create_nfo_mock = mocker.patch.object(backfiller.metadata_generator, "create_nfo_file")
+
+        totals = backfiller.run(scope="full", refresh_existing=False)
+        assert totals == {"updated": 1, "skipped_existing": 0, "failed": 0}
+
+        canonical_stem = "2025-01-31_video-abc123_test-channel"
+        assert not (playlist_dir / f"{fallback_stem}.mp4").exists()
+        assert (playlist_dir / f"{canonical_stem}.mp4").exists()
+        assert (playlist_dir / f"{canonical_stem}.info.json").exists()
+        assert (playlist_dir / f"{canonical_stem}.nfo").exists()
+        write_metadata_mock.assert_called_once()
+        create_nfo_mock.assert_called_once()
+
+    def test_full_scope_skips_rename_on_conflict_and_warns(
+        self, config, temp_dir, mocker
+    ):
+        base_dir = temp_dir / "archive"
+        playlist_path = "ExamplePlaylist"
+        playlist_dir = base_dir / playlist_path
+        playlist_dir.mkdir(parents=True, exist_ok=True)
+        (playlist_dir / ".archive.txt").write_text("abc123\n", encoding="utf-8")
+        _write_playlists(config, [{"id": "PLx", "path": playlist_path, "name": "Named"}])
+        config._config["archive"]["base_directory"] = str(base_dir)
+        config._config["archive"]["delay_between_videos"] = 0
+
+        fallback_stem = "video-abc123_unknown-channel"
+        canonical_stem = "2025-01-31_video-abc123_test-channel"
+        (playlist_dir / f"{fallback_stem}.mp4").write_bytes(b"video")
+        (playlist_dir / f"{fallback_stem}.info.json").write_text("{}", encoding="utf-8")
+        (playlist_dir / f"{canonical_stem}.info.json").write_text("{}", encoding="utf-8")
+
+        calls: list[dict[str, object]] = []
+        mocker.patch(
+            "ytdl_archiver.core.metadata_backfill.yt_dlp.YoutubeDL",
+            side_effect=lambda opts: _FakeYoutubeDL(opts, calls),
+        )
+
+        formatter = mocker.Mock()
+        backfiller = MetadataBackfiller(config, formatter=formatter)
+        mocker.patch.object(backfiller.downloader, "_write_max_metadata_sidecar")
+        mocker.patch.object(backfiller.metadata_generator, "create_nfo_file")
+
+        emit_msg = mocker.patch("ytdl_archiver.core.metadata_backfill.emit_formatter_message")
+        totals = backfiller.run(scope="full", refresh_existing=True)
+
+        assert totals == {"updated": 1, "skipped_existing": 0, "failed": 0}
+        assert (playlist_dir / f"{fallback_stem}.mp4").exists()
+        warning_calls = [
+            call for call in emit_msg.call_args_list if call.args[1] == "warning"
+        ]
+        assert warning_calls
+        assert "Rename skipped: target stem already exists" in warning_calls[-1].args[2]

@@ -180,3 +180,5 @@ Notes:
 - `<base>.metadata.json` sidecars resolve from final media stem when available, with canonical-stem fallback alignment.
 - Metadata sidecar serialization tolerates non-pickleable runtime objects from extractor results.
 - Metadata backfill (`--scope full`) also refreshes per-video `.nfo` and `<base>.metadata.json` using the same config gates.
+- Download runs reconcile fallback stems after completion when final metadata provides canonical token values.
+- Metadata backfill `--scope full` repairs legacy fallback stems and skips conflicting rename targets with warnings.

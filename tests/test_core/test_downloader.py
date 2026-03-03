@@ -335,6 +335,88 @@ class TestYouTubeDownloader:
         assert "video-test_video_unknown-channel" in output_template
         assert filename == "video-test_video_unknown-channel"
 
+    def test_download_video_with_config_reconciles_fallback_stem_after_download(
+        self, config, temp_dir, mocker
+    ):
+        """Test fallback stem is renamed when final metadata has canonical values."""
+        config._config["archive"]["delay_between_videos"] = 0
+        downloader = YouTubeDownloader(config)
+        video_url = "https://www.youtube.com/watch?v=test_video"
+        fallback_stem = "video-test_video_unknown-channel"
+        canonical_result = {
+            "id": "test_video",
+            "title": "Test Video",
+            "uploader": "Test Channel",
+            "upload_date": "20240101",
+            "requested_downloads": [
+                {"filepath": str(temp_dir / f"{fallback_stem}.mp4")}
+            ],
+        }
+        canonical_stem = downloader._build_output_filename(canonical_result, video_url)
+
+        (temp_dir / f"{fallback_stem}.mp4").write_bytes(b"video")
+        (temp_dir / f"{fallback_stem}.info.json").write_text("{}", encoding="utf-8")
+        (temp_dir / f"{fallback_stem}.nfo").write_text("nfo", encoding="utf-8")
+        (temp_dir / f"{fallback_stem}.jpg").write_bytes(b"jpg")
+        (temp_dir / f"{fallback_stem}.en.srt").write_text("1\n", encoding="utf-8")
+
+        mocker.patch.object(downloader, "get_metadata", return_value=None)
+        mocker.patch.object(
+            downloader,
+            "_download_with_effective_config",
+            return_value=canonical_result,
+        )
+        mocker.patch.object(downloader, "_write_max_metadata_sidecar")
+        mocker.patch.object(downloader, "_emit_post_download_generated_lines")
+
+        downloader.download_video_with_config(video_url, temp_dir, None)
+
+        for suffix in (".mp4", ".info.json", ".nfo", ".jpg", ".en.srt"):
+            assert not (temp_dir / f"{fallback_stem}{suffix}").exists()
+            assert (temp_dir / f"{canonical_stem}{suffix}").exists()
+
+    def test_download_video_with_config_skips_stem_reconcile_on_conflict(
+        self, config, temp_dir, mocker
+    ):
+        """Test stem reconcile emits warning and keeps source when target exists."""
+        config._config["archive"]["delay_between_videos"] = 0
+        formatter = ProgressFormatter()
+        downloader = YouTubeDownloader(config, formatter=formatter)
+        video_url = "https://www.youtube.com/watch?v=test_video"
+        fallback_stem = "video-test_video_unknown-channel"
+        canonical_result = {
+            "id": "test_video",
+            "title": "Test Video",
+            "uploader": "Test Channel",
+            "upload_date": "20240101",
+            "requested_downloads": [
+                {"filepath": str(temp_dir / f"{fallback_stem}.mp4")}
+            ],
+        }
+        canonical_stem = downloader._build_output_filename(canonical_result, video_url)
+
+        (temp_dir / f"{fallback_stem}.mp4").write_bytes(b"video")
+        (temp_dir / f"{canonical_stem}.mp4").write_bytes(b"target")
+
+        mocker.patch.object(downloader, "get_metadata", return_value=None)
+        mocker.patch.object(
+            downloader,
+            "_download_with_effective_config",
+            return_value=canonical_result,
+        )
+        mocker.patch.object(downloader, "_write_max_metadata_sidecar")
+        mocker.patch.object(downloader, "_emit_post_download_generated_lines")
+
+        with patch("ytdl_archiver.core.downloader.emit_formatter_message") as emit_msg:
+            downloader.download_video_with_config(video_url, temp_dir, None)
+
+        assert (temp_dir / f"{fallback_stem}.mp4").exists()
+        warning_calls = [
+            call for call in emit_msg.call_args_list if call.args[1] == "warning"
+        ]
+        assert warning_calls
+        assert "Rename skipped: target stem already exists" in warning_calls[-1].args[2]
+
     def test_build_output_filename_supports_title_only_token(self, config):
         """Test filename builder supports token subsets."""
         config._config["filename"]["tokens"] = ["title"]
