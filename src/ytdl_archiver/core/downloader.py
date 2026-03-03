@@ -577,6 +577,12 @@ class YouTubeDownloader:
 
         verbose = self.config.get("logging.level") == "DEBUG"
 
+        print(f"DEBUG get_metadata: {video_url}", file=sys.stderr)
+        print(f"DEBUG opts keys: {list(opts.keys())}", file=sys.stderr)
+        print(f"DEBUG cookiefile: {opts.get('cookiefile')}", file=sys.stderr)
+        print(f"DEBUG user_agent: {opts.get('user_agent')}", file=sys.stderr)
+        print(f"DEBUG http_headers: {opts.get('http_headers')}", file=sys.stderr)
+
         try:
             if verbose:
                 logger.debug("Fetching metadata", extra={"video_url": video_url})
@@ -589,6 +595,7 @@ class YouTubeDownloader:
                     )
                 return info_dict
         except Exception as e:
+            print(f"DEBUG ERROR: {type(e).__name__}: {e}", file=sys.stderr)
             # Log at debug level since we have a fallback
             if verbose:
                 logger.debug(
