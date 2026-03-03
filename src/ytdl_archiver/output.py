@@ -91,7 +91,7 @@ class BaseFormatter:
     @staticmethod
     def _status_label_width() -> int:
         """Fixed width to align titles across status lines."""
-        return len("Thumbnail generated:")
+        return len("Downloaded subtitles:")
 
     def _status_label(self, text: str, color: str = Colors.GREEN) -> str:
         """Build a padded, colorized status label."""
@@ -192,9 +192,12 @@ class BaseFormatter:
             parts.append(f"[{ext}]")
         return f"{Symbols.SUCCESS} {' '.join(parts)}"
 
-    def mp4_generated(self, title: str, resolution: str = "", size: str = "") -> str:
-        """Print final mp4 generation message."""
-        label = self._status_label(".mp4 generated:")
+    def container_generated(
+        self, title: str, extension: str, resolution: str = "", size: str = ""
+    ) -> str:
+        """Print final container generation message."""
+        ext = self._normalize_extension(extension) or ".mp4"
+        label = self._status_label(f"{ext} generated:")
         parts = [label, title]
         bracket_bits = []
         if resolution:
@@ -204,6 +207,10 @@ class BaseFormatter:
         if bracket_bits:
             parts.append(f"[{', '.join(bracket_bits)}]")
         return f"{Symbols.SUCCESS} {' '.join(parts)}"
+
+    def mp4_generated(self, title: str, resolution: str = "", size: str = "") -> str:
+        """Backward-compatible wrapper for mp4 generation output."""
+        return self.container_generated(title, ".mp4", resolution, size)
 
     def file_generated(self, file_type: str) -> str:
         """Print file generation message."""
@@ -427,6 +434,13 @@ class QuietFormatter(BaseFormatter):
     def mp4_generated(self, title: str, resolution: str = "", size: str = "") -> str:
         """Print mp4 generation (quiet mode - minimal)."""
         _ = (title, resolution, size)
+        return ""
+
+    def container_generated(
+        self, title: str, extension: str, resolution: str = "", size: str = ""
+    ) -> str:
+        """Print container generation (quiet mode - minimal)."""
+        _ = (title, extension, resolution, size)
         return ""
 
     def file_generated(self, file_type: str) -> str:

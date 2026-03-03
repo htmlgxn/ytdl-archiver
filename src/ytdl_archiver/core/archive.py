@@ -341,7 +341,7 @@ class PlaylistArchiver:
 
                     # Generate NFO file
                     nfo_created = self._generate_nfo_if_needed(
-                        metadata, output_directory, video_url
+                        metadata, output_directory, video_url, metadata
                     )
 
                     # Mark as downloaded
@@ -468,7 +468,11 @@ class PlaylistArchiver:
             return {}
 
     def _generate_nfo_if_needed(
-        self, metadata: dict[str, Any], output_directory: Path, video_url: str
+        self,
+        metadata: dict[str, Any],
+        output_directory: Path,
+        video_url: str,
+        download_result: dict[str, Any] | None = None,
     ) -> bool:
         """Generate NFO file if enabled."""
         if not self.config.get("media_server.generate_nfo", True):
@@ -476,14 +480,44 @@ class PlaylistArchiver:
 
         try:
             filename = build_output_filename(self.config, metadata, video_url)
+            candidate_paths: list[Path] = []
+            if isinstance(download_result, dict):
+                requested_downloads = download_result.get("requested_downloads")
+                if isinstance(requested_downloads, list):
+                    for entry in requested_downloads:
+                        if not isinstance(entry, dict):
+                            continue
+                        filepath = entry.get("filepath")
+                        if isinstance(filepath, str) and filepath.strip():
+                            path_obj = Path(filepath)
+                            if path_obj.exists() and path_obj.is_file():
+                                candidate_paths.append(path_obj)
 
-            # Check if video file exists
-            video_file = output_directory / f"{filename}.mp4"
-            if video_file.exists():
-                nfo_path = video_file.with_suffix(".nfo")
-                self.metadata_generator.create_nfo_file(metadata, nfo_path)
-                return True
-            return False
+                fallback_filename = download_result.get("_filename")
+                if isinstance(fallback_filename, str) and fallback_filename.strip():
+                    path_obj = Path(fallback_filename)
+                    if path_obj.exists() and path_obj.is_file():
+                        candidate_paths.append(path_obj)
+
+            if not candidate_paths:
+                for extension in (".mp4", ".mkv"):
+                    candidate = output_directory / f"{filename}{extension}"
+                    if candidate.exists() and candidate.is_file():
+                        candidate_paths.append(candidate)
+
+            if not candidate_paths:
+                return False
+
+            preferred = sorted(
+                candidate_paths,
+                key=lambda path: (
+                    path.suffix.lower() not in {".mp4", ".mkv"},
+                    path.suffix.lower() != ".mp4",
+                ),
+            )[0]
+            nfo_path = preferred.with_suffix(".nfo")
+            self.metadata_generator.create_nfo_file(metadata, nfo_path)
+            return True
 
         except (MetadataError, OSError, ValueError, RuntimeError, TypeError) as e:
             logger.exception("Failed to generate NFO", extra={"error": str(e)})

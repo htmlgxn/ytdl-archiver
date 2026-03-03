@@ -538,6 +538,42 @@ class TestYouTubeDownloader:
         assert payload["metadata"]["id"] == "test_video"
         assert "generated_at" in payload
 
+    def test_download_video_with_config_writes_metadata_sidecar_from_result_filepath(
+        self, config, temp_dir, mocker
+    ):
+        """Test metadata sidecar path resolves from final result filepath."""
+        config._config["archive"]["delay_between_videos"] = 0
+        downloader = YouTubeDownloader(config)
+        video_url = "https://www.youtube.com/watch?v=test_video"
+        metadata = {
+            "id": "test_video",
+            "title": "Test Video",
+            "uploader": "Test Channel",
+            "upload_date": "20240101",
+        }
+        base_name = downloader._build_output_filename(metadata, video_url)
+        final_mkv = temp_dir / "custom-final-name.mkv"
+        final_mkv.write_bytes(b"video")
+
+        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
+        mocker.patch.object(
+            downloader,
+            "_download_with_effective_config",
+            return_value={
+                "id": "test_video",
+                "title": "Test Video",
+                "extractor": "youtube",
+                "requested_downloads": [{"filepath": str(final_mkv)}],
+            },
+        )
+        mocker.patch.object(downloader, "_emit_post_download_generated_lines")
+
+        downloader.download_video_with_config(video_url, temp_dir, {})
+
+        assert not (temp_dir / f"{base_name}.metadata.json").exists()
+        resolved_path = temp_dir / "custom-final-name.metadata.json"
+        assert resolved_path.exists()
+
     def test_download_video_with_config_disables_max_metadata_json_when_configured(
         self, config, temp_dir, mocker
     ):
@@ -984,7 +1020,7 @@ class TestProgressCallback:
         formatter = downloader.formatter
         assert formatter is not None
         formatter.thumbnail_generated.return_value = "thumbnail-line"
-        formatter.mp4_generated.return_value = "mp4-line"
+        formatter.container_generated.return_value = "container-line"
 
         metadata = {"title": "Test Video", "width": 1920, "height": 1080}
         mocker.patch.object(downloader, "get_metadata", return_value=metadata)
@@ -1008,21 +1044,23 @@ class TestProgressCallback:
             )
 
         formatter.thumbnail_generated.assert_called_once_with("Test Video", ".jpg")
-        formatter.mp4_generated.assert_called_once_with("Test Video", "1080p", "5mb")
+        formatter.container_generated.assert_called_once_with(
+            "Test Video", ".mp4", "1080p", "5mb"
+        )
         emitted = [call.args[0] for call in emit.call_args_list]
         assert "thumbnail-line" in emitted
-        assert "mp4-line" in emitted
+        assert "container-line" in emitted
 
-    def test_download_video_with_config_emits_mp4_generated_only_when_mp4_exists(
+    def test_download_video_with_config_emits_mkv_generated_when_mp4_absent(
         self, config, temp_dir, mocker
     ):
-        """Test mp4 generated line is skipped when no final mp4 exists."""
+        """Test generated line uses final mkv container when mp4 is absent."""
         config._config["archive"]["delay_between_videos"] = 0
         downloader = YouTubeDownloader(config, formatter=Mock())
         formatter = downloader.formatter
         assert formatter is not None
         formatter.thumbnail_generated.return_value = "thumbnail-line"
-        formatter.mp4_generated.return_value = "mp4-line"
+        formatter.container_generated.return_value = "container-line"
 
         metadata = {"title": "Test Video", "width": 1920, "height": 1080}
         mocker.patch.object(downloader, "get_metadata", return_value=metadata)
@@ -1036,6 +1074,7 @@ class TestProgressCallback:
             metadata, "https://www.youtube.com/watch?v=test_video"
         )
         (temp_dir / f"{filename}.jpg").write_bytes(b"thumb")
+        (temp_dir / f"{filename}.mkv").write_bytes(b"x" * (6 * 1024 * 1024))
 
         with patch("ytdl_archiver.core.downloader.emit_rendered"):
             downloader.download_video_with_config(
@@ -1045,7 +1084,9 @@ class TestProgressCallback:
             )
 
         formatter.thumbnail_generated.assert_called_once_with("Test Video", ".jpg")
-        formatter.mp4_generated.assert_not_called()
+        formatter.container_generated.assert_called_once_with(
+            "Test Video", ".mkv", "1080p", "6mb"
+        )
 
 
 class TestSuppressOutput:

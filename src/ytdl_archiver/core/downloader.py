@@ -630,6 +630,70 @@ class YouTubeDownloader:
                 return candidate, extension
         return None
 
+    @staticmethod
+    def _iter_existing_result_filepaths(
+        download_result: dict[str, Any] | None,
+    ) -> list[Path]:
+        """Extract existing local file paths from yt-dlp result payload."""
+        if not isinstance(download_result, dict):
+            return []
+
+        paths: list[Path] = []
+        requested_downloads = download_result.get("requested_downloads")
+        if isinstance(requested_downloads, list):
+            for entry in requested_downloads:
+                if not isinstance(entry, dict):
+                    continue
+                filepath = entry.get("filepath")
+                if isinstance(filepath, str) and filepath.strip():
+                    path_obj = Path(filepath)
+                    if path_obj.exists() and path_obj.is_file():
+                        paths.append(path_obj)
+
+        fallback_filename = download_result.get("_filename")
+        if isinstance(fallback_filename, str) and fallback_filename.strip():
+            path_obj = Path(fallback_filename)
+            if path_obj.exists() and path_obj.is_file():
+                paths.append(path_obj)
+
+        return paths
+
+    @classmethod
+    def _resolve_final_media_path(
+        cls,
+        output_directory: Path,
+        filename: str,
+        download_result: dict[str, Any] | None,
+    ) -> Path | None:
+        """Resolve the final primary media file path."""
+        existing_result_paths = cls._iter_existing_result_filepaths(download_result)
+        if existing_result_paths:
+            preferred_exts = (".mp4", ".mkv")
+            for extension in preferred_exts:
+                for path in existing_result_paths:
+                    if cls._normalize_extension(path.suffix) == extension:
+                        return path
+            return existing_result_paths[0]
+
+        for extension in (".mp4", ".mkv"):
+            candidate = output_directory / f"{filename}{extension}"
+            if candidate.exists() and candidate.is_file():
+                return candidate
+        return None
+
+    @classmethod
+    def _resolve_output_base_path(
+        cls,
+        output_directory: Path,
+        filename: str,
+        download_result: dict[str, Any] | None,
+    ) -> Path:
+        """Resolve base path used for sidecar outputs."""
+        media_path = cls._resolve_final_media_path(output_directory, filename, download_result)
+        if media_path is not None:
+            return media_path.with_suffix("")
+        return output_directory / filename
+
     def _emit_post_download_generated_lines(
         self,
         output_directory: Path,
@@ -649,10 +713,14 @@ class YouTubeDownloader:
             _, thumbnail_ext = thumbnail
             emit_rendered(self.formatter.thumbnail_generated(title, thumbnail_ext))
 
-        mp4_path = output_directory / f"{filename}.mp4"
-        if mp4_path.exists():
-            mp4_size = self._format_size_from_bytes(mp4_path.stat().st_size)
-            emit_rendered(self.formatter.mp4_generated(title, resolution, mp4_size))
+        media_path = self._resolve_final_media_path(output_directory, filename, download_result)
+        if media_path is not None:
+            media_size = self._format_size_from_bytes(media_path.stat().st_size)
+            emit_rendered(
+                self.formatter.container_generated(
+                    title, media_path.suffix, resolution, media_size
+                )
+            )
 
         subtitle_files, subtitle_candidates = self._collect_existing_subtitles(
             output_directory, filename
@@ -675,8 +743,7 @@ class YouTubeDownloader:
     def _write_max_metadata_sidecar(
         self,
         *,
-        output_directory: Path,
-        filename: str,
+        base_path: Path,
         video_url: str,
         download_result: dict[str, Any] | None,
     ) -> None:
@@ -684,8 +751,13 @@ class YouTubeDownloader:
         if not isinstance(download_result, dict) or not download_result:
             return
 
-        metadata_path = output_directory / f"{filename}.metadata.json"
-        tmp_path = output_directory / f"{filename}.metadata.json.tmp"
+        metadata_path = base_path.with_suffix(".metadata.json")
+        tmp_path = metadata_path.with_suffix(".metadata.json.tmp")
+        self._emit_verbose_debug(
+            "Writing metadata sidecar",
+            metadata_path=str(metadata_path),
+            video_url=video_url,
+        )
         try:
             sanitized_info = yt_dlp.YoutubeDL.sanitize_info(deepcopy(download_result))
             payload = {
@@ -699,6 +771,11 @@ class YouTubeDownloader:
                 encoding="utf-8",
             )
             tmp_path.replace(metadata_path)
+            self._emit_verbose_debug(
+                "Metadata sidecar written",
+                metadata_path=str(metadata_path),
+                video_url=video_url,
+            )
         except (OSError, TypeError, ValueError) as e:
             if tmp_path.exists():
                 tmp_path.unlink(missing_ok=True)
@@ -1057,9 +1134,11 @@ class YouTubeDownloader:
                 effective_playlist_config.get("write_max_metadata_json")
             )
         if effective_write_max_metadata:
+            output_base_path = self._resolve_output_base_path(
+                output_directory, filename, download_result
+            )
             self._write_max_metadata_sidecar(
-                output_directory=output_directory,
-                filename=filename,
+                base_path=output_base_path,
                 video_url=video_url,
                 download_result=download_result,
             )
