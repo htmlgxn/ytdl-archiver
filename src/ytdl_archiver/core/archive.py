@@ -8,7 +8,7 @@ from urllib.parse import parse_qs, urlparse
 
 from ..exceptions import ArchiveError, ConfigurationError, DownloadError, MetadataError
 from ..output import emit_formatter_message, emit_rendered
-from .cookies import BrowserCookieRefresher
+from .cookies import BrowserCookieRefresher, CookieRefreshError
 from .utils import build_output_filename
 
 # Suppress yt-dlp's own logger to prevent unwanted output
@@ -191,7 +191,7 @@ class PlaylistArchiver:
                     "cookie_file": str(cookie_path),
                 },
             )
-        except Exception as e:
+        except CookieRefreshError as e:
             message = (
                 f"Cookie refresh failed at {stage} "
                 f"(browser={self.cookie_browser}) - {e!s}"
@@ -199,6 +199,25 @@ class PlaylistArchiver:
             self._emit_formatter_message("error", message)
             logger.exception(
                 "Cookie refresh failed",
+                extra={
+                    "stage": stage,
+                    "browser": self.cookie_browser,
+                    "cookie_file": str(cookie_path),
+                    "error": str(e),
+                },
+            )
+            raise ArchiveError(message) from e
+        except Exception as e:  # pragma: no cover - defensive fallback
+            # Handle any unexpected errors during cookie refresh
+            # refresh_to_file() should convert errors to CookieRefreshError,
+            # but we catch all exceptions as a safety net
+            message = (
+                f"Cookie refresh failed at {stage} "
+                f"(browser={self.cookie_browser}) - {e!s}"
+            )
+            self._emit_formatter_message("error", message)
+            logger.exception(
+                "Cookie refresh failed (unexpected error)",
                 extra={
                     "stage": stage,
                     "browser": self.cookie_browser,
@@ -334,6 +353,9 @@ class PlaylistArchiver:
                     )
                 continue
 
+        # Create tvshow.nfo for Jellyfin TV show library treatment
+        self._create_tvshow_nfo_if_needed(output_directory, playlist_info)
+
         if self.formatter:
             emit_rendered(self.formatter.playlist_summary(stats))
         else:
@@ -377,9 +399,16 @@ class PlaylistArchiver:
 
             with yt_dlp.YoutubeDL(opts) as ydl:
                 return ydl.extract_info(playlist_url, download=False)
-        except Exception as e:
+        except yt_dlp.DownloadError as e:
             logger.exception(
                 "Failed to get playlist info",
+                extra={"playlist_url": playlist_url, "error": str(e)},
+            )
+            return {}
+        except Exception as e:  # pragma: no cover - defensive fallback
+            # Catch any unexpected errors to prevent crashing during playlist fetch
+            logger.exception(
+                "Failed to get playlist info (unexpected error)",
                 extra={"playlist_url": playlist_url, "error": str(e)},
             )
             return {}
@@ -405,6 +434,38 @@ class PlaylistArchiver:
         except (MetadataError, OSError, ValueError, RuntimeError, TypeError) as e:
             logger.exception("Failed to generate NFO", extra={"error": str(e)})
             return False
+
+    def _create_tvshow_nfo_if_needed(
+        self, output_directory: Path, playlist_info: dict[str, Any]
+    ) -> bool:
+        """Create tvshow.nfo for Jellyfin TV show library treatment if not exists."""
+        if not self.config.get("media_server.generate_nfo", True):
+            return False
+
+        tvshow_nfo_path = output_directory / "tvshow.nfo"
+        if tvshow_nfo_path.exists():
+            return False
+
+        try:
+            # Extract channel name from playlist info
+            channel_name = self._extract_channel_name(playlist_info)
+            if channel_name:
+                self.metadata_generator.create_tvshow_nfo(channel_name, tvshow_nfo_path)
+                return True
+            return False
+
+        except (MetadataError, OSError, ValueError, RuntimeError, TypeError) as e:
+            logger.exception("Failed to generate TV show NFO", extra={"error": str(e)})
+            return False
+
+    def _extract_channel_name(self, playlist_info: dict[str, Any]) -> str | None:
+        """Extract channel name from playlist information."""
+        # Try various fields where channel name might be stored
+        for key in ("channel", "uploader", "channel_id", "title"):
+            value = playlist_info.get(key)
+            if value and isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
 
     def run(self) -> None:
         """Run the archiver with playlists from file."""

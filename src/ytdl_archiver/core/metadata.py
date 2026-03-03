@@ -38,6 +38,31 @@ class MetadataGenerator:
             )
             raise MetadataError(f"Error writing NFO file {nfo_path}: {e}") from e
 
+    def create_tvshow_nfo(self, channel_name: str, nfo_path: Path) -> None:
+        """Create a tvshow.nfo file for Jellyfin TV show library treatment."""
+        try:
+            nfo_content = self._generate_tvshow_nfo_content(channel_name)
+
+            with nfo_path.open("w", encoding="utf-8") as nfo_file:
+                nfo_file.write(nfo_content)
+
+            logger.info("TV show NFO file created", extra={"nfo_path": str(nfo_path)})
+
+        except (OSError, UnicodeEncodeError, ValueError) as e:
+            logger.exception(
+                "Error writing TV show NFO file",
+                extra={"nfo_path": str(nfo_path), "error": str(e)},
+            )
+            raise MetadataError(f"Error writing TV show NFO file {nfo_path}: {e}") from e
+
+    def _generate_tvshow_nfo_content(self, channel_name: str) -> str:
+        """Generate tvshow.nfo content from channel name."""
+        return f"""<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<tvshow>
+  <title>{self._escape_xml(channel_name)}</title>
+</tvshow>
+"""
+
     def _generate_nfo_content(self, metadata: dict[str, Any]) -> str:
         """Generate NFO content from metadata."""
         title = metadata.get("title", "Unknown Title")
@@ -86,7 +111,8 @@ class MetadataGenerator:
         duration: int,
     ) -> str:
         """Generate Kodi-compatible NFO content."""
-        return f"""<episodedetails>
+        return f"""<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+  <episodedetails>
   <title>{self._escape_xml(title)}</title>
   <id>{self._escape_xml(video_id)}</id>
   <studio>{self._escape_xml(channel)}</studio>
@@ -108,7 +134,8 @@ class MetadataGenerator:
         duration: int,
     ) -> str:
         """Generate Emby-compatible NFO content."""
-        return f"""<Item>
+        return f"""<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+  <Item>
   <Name>{self._escape_xml(title)}</Name>
   <Id>{self._escape_xml(video_id)}</Id>
   <Studio>{self._escape_xml(channel)}</Studio>
