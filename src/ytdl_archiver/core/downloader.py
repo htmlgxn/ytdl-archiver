@@ -2,6 +2,7 @@
 
 import logging
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Any, ClassVar, cast
@@ -490,17 +491,10 @@ class YouTubeDownloader:
         cookie_path = self.config.get_cookie_file_path()
         if cookie_path:
             opts["cookiefile"] = str(cookie_path)
+            print(f"DEBUG: Using cookie file: {cookie_path}", file=sys.stderr)
         else:
-            # Log warning if no cookie file found
             cookie_target = self.config.get_cookie_file_target_path()
-            logger.warning(
-                "No cookie file found - yt-dlp will run without authentication",
-                extra={
-                    "configured_path": str(cookie_target),
-                    "resolved_path": str(cookie_path) if cookie_path else "None",
-                    "file_exists": cookie_target.exists() if cookie_target else False,
-                },
-            )
+            print(f"DEBUG: NO COOKIE FILE - target={cookie_target}, exists={cookie_target.exists()}", file=sys.stderr)
 
         return {k: v for k, v in opts.items() if v is not None}
 
