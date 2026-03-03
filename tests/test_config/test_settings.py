@@ -21,7 +21,7 @@ class TestConfig:
 
         # Test that default values are loaded
         assert config.get("archive.base_directory") == "~/Videos/YouTube"
-        assert config.get("download.format") == "bestvideo+bestaudio/best"
+        assert config.get("download.format") == "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
         assert config.get("logging.level") == "INFO"
 
     def test_load_user_config(self, sample_config_file):
