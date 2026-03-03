@@ -2,6 +2,7 @@
 
 import logging
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Any, ClassVar, cast
@@ -566,18 +567,25 @@ class YouTubeDownloader:
 
         verbose = self.config.get("logging.level") == "DEBUG"
 
+        # DEBUG: Print options to stderr
+        print(f"DEBUG: get_metadata {video_url}", file=sys.stderr, flush=True)
+        print(f"DEBUG: cookiefile={opts.get('cookiefile')}", file=sys.stderr, flush=True)
+        print(f"DEBUG: format={opts.get('format')}", file=sys.stderr, flush=True)
+        print(f"DEBUG: format_sort={opts.get('format_sort')}", file=sys.stderr, flush=True)
+        print(f"DEBUG: extractor_args={opts.get('extractor_args')}", file=sys.stderr, flush=True)
+
         try:
             if verbose:
                 logger.debug("Fetching metadata", extra={"video_url": video_url})
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info_dict = ydl.extract_info(video_url, download=False)
-                if verbose and info_dict:
-                    logger.debug(
-                        "Metadata fetched",
-                        extra={"title": info_dict.get("title")},
-                    )
+                if info_dict is None:
+                    print(f"DEBUG: yt-dlp returned None", file=sys.stderr, flush=True)
+                    return None
+                print(f"DEBUG: SUCCESS {info_dict.get('title')}", file=sys.stderr, flush=True)
                 return info_dict
         except Exception as e:
+            print(f"DEBUG ERROR: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
             # Log at debug level since we have a fallback
             if verbose:
                 logger.debug(
