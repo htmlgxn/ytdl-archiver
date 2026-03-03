@@ -442,7 +442,6 @@ class YouTubeDownloader:
         format_sort = opts.get("format_sort")
         if format_sort and isinstance(format_sort, str):
             opts["format_sort"] = [s.strip() for s in format_sort.split(",")]
-            print(f"DEBUG: Converted format_sort to list: {opts['format_sort']}", file=sys.stderr, flush=True)
 
         opts.update(
             {
