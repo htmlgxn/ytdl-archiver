@@ -263,6 +263,16 @@ def archive(
     help="Archive directory path",
 )
 @click.option(
+    "--cookies-browser",
+    type=click.Choice(SUPPORTED_BROWSERS, case_sensitive=False),
+    help="Browser to refresh cookies from before metadata-backfill",
+)
+@click.option(
+    "--cookies-profile",
+    type=str,
+    help="Browser profile name or full profile path for cookie extraction",
+)
+@click.option(
     "--scope",
     type=click.Choice(["full", "info-json"], case_sensitive=False),
     default="full",
@@ -292,6 +302,8 @@ def metadata_backfill(
     ctx: click.Context,
     playlists: Path | None,
     directory: Path | None,
+    cookies_browser: str | None,
+    cookies_profile: str | None,
     scope: str,
     refresh_existing: bool,
     limit_per_playlist: int | None,
@@ -318,6 +330,24 @@ def metadata_backfill(
         emit_rendered(formatter.header(__version__))
         emit_rendered(formatter.archive_directory(str(config.get_archive_directory())))
 
+        normalized_browser = cookies_browser.lower() if cookies_browser else None
+        effective_cookie_profile = cookies_profile
+        if not normalized_browser:
+            normalized_browser, configured_profile = _resolve_config_cookie_refresh(
+                config,
+                profile_override=cookies_profile,
+            )
+            effective_cookie_profile = configured_profile
+
+        if normalized_browser:
+            cookie_refresher = BrowserCookieRefresher()
+            cookie_target = config.get_cookie_file_target_path()
+            cookie_refresher.refresh_to_file(
+                normalized_browser,
+                effective_cookie_profile,
+                cookie_target,
+            )
+
         backfiller = MetadataBackfiller(config, formatter)
         backfiller.run(
             scope=scope.lower(),
@@ -334,7 +364,7 @@ def metadata_backfill(
         else:
             click.echo("Operation cancelled by user", err=True)
         sys.exit(130)
-    except (ConfigurationError, OSError, RuntimeError, ValueError) as e:
+    except (ConfigurationError, CookieRefreshError, OSError, RuntimeError, ValueError) as e:
         if formatter:
             message = formatter.error(f"Metadata backfill failed - {e!s}")
             if message:

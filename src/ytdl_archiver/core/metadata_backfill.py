@@ -1,6 +1,8 @@
 """Metadata backfill workflow for archived YouTube videos."""
 
+import json
 import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
@@ -32,6 +34,10 @@ class PlaylistBackfillStats:
     failed: int = 0
 
 
+class BackfillRateLimitError(RuntimeError):
+    """Raised when extractor output indicates API/account rate limiting."""
+
+
 class MetadataBackfiller:
     """Backfill metadata sidecars for already archived videos."""
 
@@ -55,6 +61,7 @@ class MetadataBackfiller:
         self.formatter = formatter
         self.metadata_generator = MetadataGenerator(config)
         self.downloader = YouTubeDownloader(config, formatter)
+        self._rate_limit_warned = False
 
     def run(
         self,
@@ -142,6 +149,7 @@ class MetadataBackfiller:
         archive_file = playlist_directory / ".archive.txt"
         archived_ids = self._load_archived_video_ids(archive_file)
         playlist_config = self.config.get_playlist_config(playlist_id)
+        delay_between_videos = float(self.config.get("archive.delay_between_videos", 0) or 0)
 
         if limit_per_playlist is not None:
             archived_ids = archived_ids[:limit_per_playlist]
@@ -153,7 +161,7 @@ class MetadataBackfiller:
                 )
             )
 
-        for video_id in archived_ids:
+        for index, video_id in enumerate(archived_ids):
             try:
                 outcome = self._process_video(
                     video_id=video_id,
@@ -168,6 +176,28 @@ class MetadataBackfiller:
                     stats.skipped_existing += 1
                 else:
                     stats.failed += 1
+            except BackfillRateLimitError as e:
+                stats.failed += 1
+                if not self._rate_limit_warned:
+                    self._rate_limit_warned = True
+                    self._emit(
+                        "warning",
+                        (
+                            "YouTube rate limit detected during metadata backfill. "
+                            "Pausing remaining videos in this playlist. "
+                            "Wait about 60 minutes, refresh cookies, and rerun "
+                            "with --limit-per-playlist or higher delays."
+                        ),
+                    )
+                self._emit(
+                    "warning",
+                    f"Rate-limited while processing {video_id} in {playlist_path}: {e!s}",
+                )
+                if not continue_on_error:
+                    raise ArchiveError(
+                        f"Metadata backfill failed for {video_id}: {e}"
+                    ) from e
+                break
             except (yt_dlp.DownloadError, OSError, ValueError, RuntimeError) as e:
                 stats.failed += 1
                 self._emit(
@@ -178,6 +208,8 @@ class MetadataBackfiller:
                     raise ArchiveError(
                         f"Metadata backfill failed for {video_id}: {e}"
                     ) from e
+            if delay_between_videos > 0 and index < len(archived_ids) - 1:
+                time.sleep(delay_between_videos)
 
         # Create tvshow.nfo for Jellyfin TV show library treatment
         self._create_tvshow_nfo_if_needed(
@@ -257,18 +289,13 @@ class MetadataBackfiller:
             return "skipped_existing"
 
         extracted_result: dict[str, Any] = metadata
+
         if needs_info_json:
-            opts = self._build_metadata_only_opts(
+            self._write_info_json_sidecar(
                 playlist_directory=playlist_directory,
                 output_stem=output_stem,
-                scope=scope,
-                refresh_existing=refresh_existing,
+                metadata=extracted_result,
             )
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                result = ydl.extract_info(video_url, download=False)
-            if not isinstance(result, dict) or not result:
-                return "failed"
-            extracted_result = result
 
         if needs_nfo:
             self.metadata_generator.create_nfo_file(extracted_result, nfo_path)
@@ -346,11 +373,17 @@ class MetadataBackfiller:
     def _fetch_metadata(self, video_url: str) -> dict[str, Any] | None:
         """Fetch metadata without writing sidecars."""
         opts = self._build_common_opts()
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(video_url, download=False)
-            if isinstance(info, dict):
-                return info
-            return None
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(video_url, download=False)
+                if isinstance(info, dict):
+                    return info
+                return None
+        except yt_dlp.DownloadError as e:
+            message = str(e)
+            if self._is_rate_limited_message(message):
+                raise BackfillRateLimitError(message) from e
+            raise
 
     def _resolve_output_stem(
         self, playlist_directory: Path, canonical_stem: str, video_id: str
@@ -377,6 +410,7 @@ class MetadataBackfiller:
 
     def _build_common_opts(self) -> dict[str, Any]:
         """Build common yt-dlp options shared by metadata calls."""
+        request_sleep = float(self.config.get("archive.delay_between_videos", 0) or 0)
         opts = {
             "quiet": True,
             "no_warnings": True,
@@ -391,6 +425,7 @@ class MetadataBackfiller:
             # Use same format/sort settings as download for consistency
             "format": self.config.get("download.format"),
             "format_sort": self.config.get("download.format_sort"),
+            "sleep_interval_requests": request_sleep if request_sleep > 0 else None,
         }
         cookie_path = self.config.get_cookie_file_path()
         if cookie_path:
@@ -435,6 +470,45 @@ class MetadataBackfiller:
             )
 
         return {key: value for key, value in opts.items() if value is not None}
+
+    @staticmethod
+    def _is_rate_limited_message(message: str) -> bool:
+        lowered = message.lower()
+        indicators = (
+            "rate-limited",
+            "try again later",
+            "this content isn't available",
+            "this content isnt available",
+            "extractors#this-content-isnt-available-try-again-later",
+        )
+        return any(indicator in lowered for indicator in indicators)
+
+    def _write_info_json_sidecar(
+        self,
+        *,
+        playlist_directory: Path,
+        output_stem: str,
+        metadata: dict[str, Any],
+    ) -> None:
+        info_path = playlist_directory / f"{output_stem}.info.json"
+        tmp_path = playlist_directory / f"{output_stem}.info.json.tmp"
+        sanitized_info = yt_dlp.YoutubeDL.sanitize_info(metadata)
+        serialized = json.dumps(
+            sanitized_info,
+            indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+            default=str,
+        )
+        try:
+            tmp_path.write_text(serialized + "\n", encoding="utf-8")
+            tmp_path.replace(info_path)
+        except OSError as e:
+            if tmp_path.exists():
+                tmp_path.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"Failed to write info sidecar {info_path}: {e!s}"
+            ) from e
 
     def _create_tvshow_nfo_if_needed(
         self,

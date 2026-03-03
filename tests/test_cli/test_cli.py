@@ -151,6 +151,99 @@ base_directory = "{temp_dir}/downloads"
             )
 
     @patch("ytdl_archiver.cli.BrowserCookieRefresher")
+    @patch("ytdl_archiver.cli.MetadataBackfiller")
+    @patch("ytdl_archiver.cli.Config")
+    def test_metadata_backfill_refreshes_browser_cookies_before_run(
+        self,
+        mock_config_class,
+        mock_backfiller_class,
+        mock_cookie_refresher_class,
+    ):
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text("")
+
+            mock_config = Mock()
+            mock_config.validate.return_value = None
+            mock_config.ensure_playlists_file.return_value = None
+            mock_config.as_dict.return_value = {"logging": {"level": "INFO"}}
+            mock_config.migrate_playlists_from_cwd.return_value = None
+            mock_config.get_cookie_file_target_path.return_value = (
+                Path(temp_dir) / "cookies.txt"
+            )
+            mock_config_class.return_value = mock_config
+
+            mock_backfiller = Mock()
+            mock_backfiller_class.return_value = mock_backfiller
+            cookie_refresher = Mock()
+            mock_cookie_refresher_class.return_value = cookie_refresher
+
+            result = self.runner.invoke(
+                cli,
+                [
+                    "--config",
+                    str(config_file),
+                    "metadata-backfill",
+                    "--cookies-browser",
+                    "firefox",
+                    "--cookies-profile",
+                    "default",
+                ],
+            )
+
+            assert result.exit_code == 0
+            cookie_refresher.refresh_to_file.assert_called_once_with(
+                "firefox",
+                "default",
+                Path(temp_dir) / "cookies.txt",
+            )
+
+    @patch("ytdl_archiver.cli.BrowserCookieRefresher")
+    @patch("ytdl_archiver.cli.MetadataBackfiller")
+    @patch("ytdl_archiver.cli.Config")
+    def test_metadata_backfill_uses_persisted_cookie_settings(
+        self,
+        mock_config_class,
+        mock_backfiller_class,
+        mock_cookie_refresher_class,
+    ):
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            config_file.write_text("")
+
+            mock_config = Mock()
+            mock_config.validate.return_value = None
+            mock_config.ensure_playlists_file.return_value = None
+            mock_config.as_dict.return_value = {"logging": {"level": "INFO"}}
+            mock_config.migrate_playlists_from_cwd.return_value = None
+            mock_config.get_cookie_file_target_path.return_value = (
+                Path(temp_dir) / "cookies.txt"
+            )
+            mock_config.get.side_effect = lambda key, default=None: {
+                "cookies.source": "browser",
+                "cookies.refresh_on_startup": True,
+                "cookies.browser": "firefox",
+                "cookies.profile": "default-release",
+            }.get(key, default)
+            mock_config_class.return_value = mock_config
+
+            mock_backfiller_class.return_value = Mock()
+            cookie_refresher = Mock()
+            mock_cookie_refresher_class.return_value = cookie_refresher
+
+            result = self.runner.invoke(
+                cli,
+                ["--config", str(config_file), "metadata-backfill"],
+            )
+
+            assert result.exit_code == 0
+            cookie_refresher.refresh_to_file.assert_called_once_with(
+                "firefox",
+                "default-release",
+                Path(temp_dir) / "cookies.txt",
+            )
+
+    @patch("ytdl_archiver.cli.BrowserCookieRefresher")
     @patch("ytdl_archiver.cli.PlaylistArchiver")
     @patch("ytdl_archiver.cli.Config")
     def test_archive_refreshes_browser_cookies_before_run(
