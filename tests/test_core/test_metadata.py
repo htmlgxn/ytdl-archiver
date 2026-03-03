@@ -115,6 +115,27 @@ class TestMetadataGenerator:
         assert "&gt;" in content  # > should be escaped
         assert "&quot;" in content  # " should be escaped
 
+    def test_create_nfo_file_avoids_double_escaped_entities(self, config, temp_dir):
+        """Test pre-escaped metadata is normalized before XML escaping."""
+        generator = MetadataGenerator(config)
+        video_info = {
+            "id": "test_entities",
+            "title": "People &amp; Blogs",
+            "description": "Already escaped &amp; text",
+            "categories": ["People &amp; Blogs"],
+            "tags": ["rock &amp; roll"],
+            "upload_date": "20240101",
+            "duration": 120,
+        }
+        output_path = temp_dir / "test_entities.nfo"
+
+        generator.create_nfo_file(video_info, output_path)
+
+        content = output_path.read_text(encoding="utf-8")
+        assert "<genre>People &amp; Blogs</genre>" in content
+        assert "<tag>rock &amp; roll</tag>" in content
+        assert "&amp;amp;" not in content
+
     def test_create_nfo_file_missing_metadata(self, config, temp_dir):
         """Test creating NFO file with missing metadata."""
         generator = MetadataGenerator(config)
