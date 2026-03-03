@@ -490,6 +490,17 @@ class YouTubeDownloader:
         cookie_path = self.config.get_cookie_file_path()
         if cookie_path:
             opts["cookiefile"] = str(cookie_path)
+        else:
+            # Log warning if no cookie file found
+            cookie_target = self.config.get_cookie_file_target_path()
+            logger.warning(
+                "No cookie file found - yt-dlp will run without authentication",
+                extra={
+                    "configured_path": str(cookie_target),
+                    "resolved_path": str(cookie_path) if cookie_path else "None",
+                    "file_exists": cookie_target.exists() if cookie_target else False,
+                },
+            )
 
         return {k: v for k, v in opts.items() if v is not None}
 
