@@ -2,7 +2,6 @@
 
 import logging
 import re
-import sys
 import time
 from pathlib import Path
 from typing import Any, ClassVar, cast
@@ -491,10 +490,6 @@ class YouTubeDownloader:
         cookie_path = self.config.get_cookie_file_path()
         if cookie_path:
             opts["cookiefile"] = str(cookie_path)
-            print(f"DEBUG: Using cookie file: {cookie_path}", file=sys.stderr)
-        else:
-            cookie_target = self.config.get_cookie_file_target_path()
-            print(f"DEBUG: NO COOKIE FILE - target={cookie_target}, exists={cookie_target.exists()}", file=sys.stderr)
 
         return {k: v for k, v in opts.items() if v is not None}
 
@@ -574,27 +569,21 @@ class YouTubeDownloader:
     def get_metadata(self, video_url: str) -> dict[str, Any] | None:
         """Get video metadata without downloading."""
         opts = self._build_runtime_ydl_options(include_progress_hooks=False)
-        
-        # Use ignoreerrors=False to see actual yt-dlp errors
-        opts["ignoreerrors"] = False
 
         verbose = self.config.get("logging.level") == "DEBUG"
-
-        print(f"DEBUG get_metadata: {video_url}", file=sys.stderr, flush=True)
-        print(f"DEBUG cookiefile: {opts.get('cookiefile')}", file=sys.stderr, flush=True)
 
         try:
             if verbose:
                 logger.debug("Fetching metadata", extra={"video_url": video_url})
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info_dict = ydl.extract_info(video_url, download=False)
-                if info_dict is None:
-                    print(f"DEBUG: yt-dlp returned None", file=sys.stderr, flush=True)
-                    return None
-                print(f"DEBUG SUCCESS: {info_dict.get('title', 'unknown')}", file=sys.stderr, flush=True)
+                if verbose and info_dict:
+                    logger.debug(
+                        "Metadata fetched",
+                        extra={"title": info_dict.get("title")},
+                    )
                 return info_dict
         except Exception as e:
-            print(f"DEBUG ERROR: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
             # Log at debug level since we have a fallback
             if verbose:
                 logger.debug(

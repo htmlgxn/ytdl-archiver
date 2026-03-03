@@ -201,25 +201,10 @@ def archive(
             cookie_refresher = BrowserCookieRefresher()
             cookie_target = config.get_cookie_file_target_path()
             try:
-                logger.debug(
-                    "Refreshing cookies",
-                    extra={
-                        "browser": normalized_browser,
-                        "profile": effective_cookie_profile,
-                        "target_path": str(cookie_target),
-                    },
-                )
                 cookie_refresher.refresh_to_file(
                     normalized_browser,
                     effective_cookie_profile,
                     cookie_target,
-                )
-                logger.debug(
-                    "Cookie refresh completed",
-                    extra={
-                        "target_path": str(cookie_target),
-                        "exists": cookie_target.exists(),
-                    },
                 )
                 skip_initial_cookie_refresh = True
             except (CookieRefreshError, OSError, ValueError, RuntimeError) as e:

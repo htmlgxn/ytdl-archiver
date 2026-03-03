@@ -196,15 +196,6 @@ class BrowserCookieRefresher:
         """Extract browser cookies and atomically replace output file."""
         normalized_browser = browser.strip().lower()
         target_path = output_path.expanduser()
-        logger.debug(
-            "Cookie refresh starting",
-            extra={
-                "browser": normalized_browser,
-                "profile": profile,
-                "target_path": str(target_path),
-                "target_absolute": str(target_path.absolute()),
-            },
-        )
         target_path.parent.mkdir(parents=True, exist_ok=True)
 
         temp_path = target_path.with_name(f".{target_path.name}.tmp")
