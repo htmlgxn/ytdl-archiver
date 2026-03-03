@@ -427,15 +427,6 @@ class YouTubeDownloader:
 
         opts["postprocessors"] = postprocessors
 
-        # Add postprocessor arguments for forced codec conversion
-        postprocessor_args = first_defined("postprocessor_args")
-        if postprocessor_args:
-            opts["postprocessor_args"] = postprocessor_args
-
-        # Add JavaScript runtime handling to suppress warnings
-        if self.formatter and hasattr(self.formatter, "js_runtime_warning"):
-            opts["extractor_args"] = {"youtube": {"player_client": "default"}}
-
         return {k: v for k, v in opts.items() if v is not None}
 
     def _build_runtime_ydl_options(
