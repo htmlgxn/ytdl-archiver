@@ -6,9 +6,10 @@ max_retries = 3
 retry_backoff_factor = 2.0
 
 [download]
-format = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+format = "bestvideo*+bestaudio/best"
 format_sort = "res,br,fps,container"
 merge_output_format = "mp4"
+container_policy = "no_webm_prefer_mp4"
 write_info_json = true
 write_max_metadata_json = true
 write_subtitles = true

@@ -20,11 +20,17 @@ Representative messages:
 ✅ Downloaded: <title> [1080p, .mp4, 350mb]
 ✅ Downloaded subtitles: <title> [.srt]
 ✅ Downloaded subtitles: <title> [.vtt -> .srt]
+✅ Downloaded subtitles: <title> [.vtt]
 ✅ Thumbnail generated: <title> [.jpg]
 ✅ .mp4 generated: <title> [1080p, 350mb]
 ⚠️ Warning: <message>
 📊 Playlist Complete: <n> new, <n> failed
 ```
+
+Subtitle status semantics:
+- `.[.srt]`: subtitle is already `.srt` or final detected sidecar is `.srt`.
+- `.[.vtt -> .srt]`: conversion evidence indicates source `.vtt` converted to `.srt`.
+- `.[.vtt]`: fallback when `.srt` is not produced.
 
 ## Quiet mode (`-q`)
 - Suppresses normal progress and success lines.
@@ -33,8 +39,9 @@ Representative messages:
 ## Verbose mode (`-v`)
 - Emits additional structured technical informational/debug messages.
 - Includes diagnostics for metadata prefetch, fallback paths, cookie refresh lifecycle,
-  playlist metadata fetch, and retry/failure context.
+  playlist metadata fetch, format/container policy decisions, and retry/failure context.
 - Does **not** pass through raw yt-dlp verbose output.
+- Complements formatter UX; it should not replace normal success/progress lines.
 
 Default progress mode suppresses troubleshooting internals and keeps output focused on
 progress, completions, warnings/errors, and summaries.

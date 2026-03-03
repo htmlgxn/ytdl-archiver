@@ -15,18 +15,19 @@ uv run ytdl-archiver [OPTIONS] COMMAND [ARGS]...
 
 ### Global options
 - `-c, --config PATH`: path to configuration file
-- `-v, --verbose`: structured technical diagnostics (debug/info) for troubleshooting;
-  does not enable raw yt-dlp passthrough output
+- `-v, --verbose`: structured technical diagnostics (debug/info) for troubleshooting; does not enable raw yt-dlp passthrough output
 - `-q, --quiet`: minimal output (errors and failure-oriented summary)
 - `--no-color`: disable colored text (symbols/emojis may still appear)
 
 ### Commands
 - `archive`: archive YouTube playlists
+- `metadata-backfill`: backfill metadata sidecars for already archived IDs
+- `search`: search channels/playlists and append selected entries to playlists config
 - `convert-playlists`: convert playlists JSON to TOML
 - `init`: run first-run setup and generate template files
 
 ## First-run behavior
-- If `config.toml` is missing and invocation is not a help flow, setup is auto-launched and exits after setup completes.
+- If `config.toml` is missing and invocation is not a help flow, setup auto-runs and exits after setup completes.
 - `init` always runs setup directly.
 - Help commands bypass setup.
 
@@ -44,7 +45,40 @@ Options:
 Notes:
 - If `--cookies-browser` is omitted, cookie refresh can still happen from config (`cookies.source = "browser"` and `cookies.refresh_on_startup = true`).
 - `--cookies-browser` and `--cookies-profile` override config for the current run.
+- Default container policy avoids final `.webm` artifacts and prefers max-resolution outputs.
 - By default, each successful download writes both `<stem>.info.json` (yt-dlp sidecar) and `<stem>.metadata.json` (project-owned full metadata payload), plus enriched per-video `.nfo` when enabled.
+
+## `metadata-backfill`
+```bash
+ytdl-archiver metadata-backfill [OPTIONS]
+```
+
+Purpose:
+- Backfill metadata sidecars for IDs already present in playlist `.archive.txt` files.
+
+Options:
+- `-p, --playlists PATH`: playlists file (JSON or TOML)
+- `-d, --directory PATH`: archive base directory override
+- `--scope [full|info-json]`: sidecar scope (`full` includes additional artifacts, `info-json` only writes info JSON)
+- `--refresh-existing / --no-refresh-existing`: refresh metadata sidecars when `.info.json` already exists
+- `--limit-per-playlist INTEGER`: max archived videos to process per playlist
+- `--continue-on-error / --fail-fast`: continue processing after errors or stop on first failure
+
+## `search`
+```bash
+ytdl-archiver search [OPTIONS] [QUERY]
+```
+
+Purpose:
+- Discover channels/playlists and append selected results to `playlists.toml`.
+
+Options:
+- `--include-playlists`: include playlist discovery in addition to channels
+
+Behavior:
+- If `QUERY` is omitted, CLI prompts for it.
+- Uses `fzf` multi-select when available; otherwise falls back to a numbered prompt.
+- Prompts for archive path per selected result before writing.
 
 ## `convert-playlists`
 ```bash
@@ -52,7 +86,7 @@ ytdl-archiver convert-playlists -i playlists.json -o playlists.toml
 ```
 
 Options:
-- `-i, --input PATH`: input JSON playlists file (required in practice)
+- `-i, --input PATH`: input JSON playlists file
 - `-o, --output PATH`: output TOML file (default is input path with `.toml` suffix)
 
 ## `init`
@@ -75,6 +109,8 @@ Used by setup runtime bridge in `src/ytdl_archiver/setup/ratatui_bridge.py`.
 ```bash
 ytdl-archiver --help
 ytdl-archiver archive --help
+ytdl-archiver metadata-backfill --help
+ytdl-archiver search --help
 ytdl-archiver convert-playlists --help
 ytdl-archiver init --help
 ```

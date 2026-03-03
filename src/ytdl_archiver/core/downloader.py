@@ -358,9 +358,129 @@ class YouTubeDownloader:
             "subtitlesformat": opts.get("subtitlesformat"),
             "convertsubtitles": opts.get("convertsubtitles"),
             "embedsubtitles": opts.get("embedsubtitles"),
+            "remux_video": opts.get("remux_video"),
             "writethumbnail": opts.get("writethumbnail"),
             "postprocessors_count": len(opts.get("postprocessors", [])),
         }
+
+    def _effective_download_setting(
+        self,
+        key: str,
+        playlist_config: dict[str, Any] | None = None,
+        default: Any = None,
+    ) -> Any:
+        """Resolve playlist override, then global config, then default."""
+        if playlist_config and key in playlist_config:
+            return playlist_config[key]
+        value = self.config.get(f"download.{key}")
+        if value is not None:
+            return value
+        return default
+
+    def _resolve_download_strategy_overrides(
+        self,
+        metadata: dict[str, Any] | None,
+        playlist_config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Resolve effective format/remux strategy for container policy."""
+        policy = str(
+            self._effective_download_setting(
+                "container_policy",
+                playlist_config,
+                default="no_webm_prefer_mp4",
+            )
+        ).strip()
+        if policy not in {"no_webm_prefer_mp4", "force_mp4", "prefer_source"}:
+            policy = "no_webm_prefer_mp4"
+
+        max_height = 0
+        has_mp4_at_max = False
+        formats = metadata.get("formats") if isinstance(metadata, dict) else None
+        if isinstance(formats, list):
+            video_formats: list[dict[str, Any]] = []
+            for item in formats:
+                if not isinstance(item, dict):
+                    continue
+                vcodec = str(item.get("vcodec") or "").strip().lower()
+                if not vcodec or vcodec == "none":
+                    continue
+                try:
+                    height = int(item.get("height") or 0)
+                except (TypeError, ValueError):
+                    height = 0
+                if height <= 0:
+                    continue
+                video_formats.append(item)
+
+            if video_formats:
+                heights: list[int] = []
+                for item in video_formats:
+                    try:
+                        height = int(item.get("height") or 0)
+                    except (TypeError, ValueError):
+                        height = 0
+                    if height > 0:
+                        heights.append(height)
+                max_height = max(heights) if heights else 0
+                def _height(value: Any) -> int:
+                    try:
+                        return int(value or 0)
+                    except (TypeError, ValueError):
+                        return 0
+
+                has_mp4_at_max = any(
+                    _height(item.get("height")) == max_height
+                    and str(item.get("ext") or "").lower() == "mp4"
+                    for item in video_formats
+                )
+
+        overrides: dict[str, Any] = {}
+        if policy == "force_mp4":
+            if max_height > 0:
+                overrides["format"] = (
+                    f"bestvideo[height={max_height}][ext=mp4]+bestaudio[ext=m4a]/"
+                    f"best[height={max_height}][ext=mp4]/"
+                    "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+                )
+            else:
+                overrides["format"] = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+            overrides["remux_video"] = "mp4"
+            self._emit_verbose_debug(
+                "Format selection strategy resolved",
+                policy=policy,
+                max_height=max_height,
+                has_mp4_at_max=has_mp4_at_max,
+                format=overrides["format"],
+                remux_video=overrides["remux_video"],
+            )
+            return overrides
+
+        if max_height > 0:
+            if policy == "no_webm_prefer_mp4" and has_mp4_at_max:
+                overrides["format"] = (
+                    f"bestvideo[height={max_height}][ext=mp4]+bestaudio/"
+                    f"best[height={max_height}][ext=mp4]/"
+                    f"bestvideo[height={max_height}][ext=mp4]/"
+                    f"best[height={max_height}]"
+                )
+            else:
+                overrides["format"] = (
+                    f"bestvideo[height={max_height}]+bestaudio/"
+                    f"best[height={max_height}]/bestvideo+bestaudio/best"
+                )
+
+        if policy == "no_webm_prefer_mp4":
+            overrides["remux_video"] = "mp4/mkv"
+
+        self._emit_verbose_debug(
+            "Format selection strategy resolved",
+            policy=policy,
+            max_height=max_height,
+            has_mp4_at_max=has_mp4_at_max,
+            format=overrides.get("format"),
+            remux_video=overrides.get("remux_video"),
+        )
+        return overrides
 
     @staticmethod
     def _normalize_extension(extension: str) -> str:
@@ -642,6 +762,10 @@ class YouTubeDownloader:
         if write_info_json is not None:
             opts["writeinfojson"] = write_info_json
 
+        remux_video = first_defined("remux_video")
+        if remux_video is not None:
+            opts["remux_video"] = remux_video
+
         # Subtitle format options
         subtitle_format = first_defined("subtitle_format", "subtitlesformat")
         if subtitle_format is not None:
@@ -657,6 +781,7 @@ class YouTubeDownloader:
 
         # Build postprocessors list
         postprocessors = []
+        container_policy = str(first_defined("container_policy") or "").strip()
 
         # Keep explicit subtitle conversion/embed processors when enabled.
         if opts.get("writesubtitles") and opts.get("convertsubtitles"):
@@ -680,6 +805,20 @@ class YouTubeDownloader:
                 "key": "FFmpegVideoConvertor",
                 "preferedformat": merge_output_format,
             })
+        elif opts.get("remux_video"):
+            postprocessors.append(
+                {
+                    "key": "FFmpegVideoRemuxer",
+                    "preferedformat": str(opts["remux_video"]),
+                }
+            )
+        elif container_policy == "no_webm_prefer_mp4":
+            postprocessors.append(
+                {
+                    "key": "FFmpegVideoRemuxer",
+                    "preferedformat": "mp4/mkv",
+                }
+            )
 
         # Add thumbnail converter postprocessor
         thumbnail_format = first_defined("thumbnail_format")
@@ -867,12 +1006,18 @@ class YouTubeDownloader:
     ) -> dict[str, Any]:
         """Download video and handle directory structure based on metadata."""
         self._emitted_subtitle_paths = set()
+        effective_playlist_config = dict(playlist_config or {})
         metadata = self.get_metadata(video_url)
         if metadata is None:
             self._emit_verbose_debug(
                 "Metadata prefetch failed. Falling back to direct download.",
                 video_url=video_url,
             )
+        else:
+            strategy_overrides = self._resolve_download_strategy_overrides(
+                metadata, effective_playlist_config
+            )
+            effective_playlist_config.update(strategy_overrides)
 
         filename = self._build_output_filename(metadata, video_url)
 
@@ -899,14 +1044,17 @@ class YouTubeDownloader:
             output_template,
             output_directory,
             filename,
-            playlist_config,
+            effective_playlist_config or None,
         )
         effective_write_max_metadata = self.config.get(
             "download.write_max_metadata_json", True
         )
-        if playlist_config and "write_max_metadata_json" in playlist_config:
+        if (
+            effective_playlist_config
+            and "write_max_metadata_json" in effective_playlist_config
+        ):
             effective_write_max_metadata = bool(
-                playlist_config.get("write_max_metadata_json")
+                effective_playlist_config.get("write_max_metadata_json")
             )
         if effective_write_max_metadata:
             self._write_max_metadata_sidecar(

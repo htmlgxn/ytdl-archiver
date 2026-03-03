@@ -249,7 +249,9 @@ path = "My Playlist"
         merged_config: dict[str, Any] = {}
         download_aliases = {
             "format": ("format",),
+            "format_sort": ("format_sort",),
             "merge_output_format": ("merge_output_format",),
+            "container_policy": ("container_policy",),
             "write_info_json": ("write_info_json", "writeinfojson"),
             "write_max_metadata_json": ("write_max_metadata_json",),
             "write_subtitles": ("write_subtitles", "writesubtitles"),
@@ -299,6 +301,20 @@ path = "My Playlist"
         download_format = self.get("download.format")
         if not download_format:
             raise ConfigurationError("Download format cannot be empty")
+
+        container_policy = str(
+            self.get("download.container_policy", "no_webm_prefer_mp4")
+        ).strip()
+        valid_container_policies = {
+            "no_webm_prefer_mp4",
+            "force_mp4",
+            "prefer_source",
+        }
+        if container_policy not in valid_container_policies:
+            raise ConfigurationError(
+                f"Invalid download.container_policy: {container_policy}. "
+                f"Valid values: {sorted(valid_container_policies)}"
+            )
 
         for key in ("download.write_info_json", "download.write_max_metadata_json"):
             value = self.get(key)

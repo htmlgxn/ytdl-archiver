@@ -29,9 +29,10 @@ max_retries = 3
 retry_backoff_factor = 2.0
 
 [download]
-format = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+format = "bestvideo*+bestaudio/best"
 format_sort = "res,br,fps,container"
 merge_output_format = "mp4"
+container_policy = "no_webm_prefer_mp4"
 write_info_json = true
 write_max_metadata_json = true
 write_subtitles = true
@@ -113,6 +114,8 @@ nfo_format = "kodi"
 Global defaults are documented in snake_case under `[download]`.
 
 Per-playlist `[playlists.download]` accepts both canonical and yt-dlp-style keys:
+- `format_sort`
+- `container_policy`
 - `write_info_json` or `writeinfojson`
 - `write_max_metadata_json`
 - `write_subtitles` or `writesubtitles`
@@ -124,6 +127,14 @@ Per-playlist `[playlists.download]` accepts both canonical and yt-dlp-style keys
 - `format`
 - `merge_output_format`
 - `thumbnail_format`
+
+Key exception:
+- `write_max_metadata_json` currently has canonical-key support only in playlist overrides.
+
+Container policy values:
+- `no_webm_prefer_mp4` (default): preserve max resolution, prefer mp4 when tied, avoid final webm by remuxing to mp4/mkv.
+- `force_mp4`: always target mp4-first selection/remux behavior.
+- `prefer_source`: keep source container unless other settings force conversion.
 
 ## Validation highlights
 Runtime validation includes:
@@ -146,3 +157,16 @@ Runtime validation includes:
 - archive runs write full yt-dlp metadata sidecars (`<base>.info.json`) by default
 - archive runs also write project-owned full metadata sidecars (`<base>.metadata.json`) by default
 - per-video NFO now includes episode-level tags (`showtitle`, `season`, `episode`, `aired`, `uniqueid`, runtime, ratings/tags/genres when available)
+
+## Artifact lifecycle (default archive run)
+Given output stem `<base>` for a downloaded video:
+- `<base>.mp4` (or configured merged media output)
+- `<base>.info.json` (yt-dlp metadata sidecar)
+- `<base>.metadata.json` (project-owned full metadata payload + run context)
+- `<base>.nfo` (when `media_server.generate_nfo = true`)
+- `<base>.<lang>.srt` subtitle sidecars (with fallback extension when conversion is unavailable)
+- `<base>.<image_ext>` thumbnail sidecar when thumbnail writing is enabled
+
+Notes:
+- Subtitles are embedded by default and sidecars are retained.
+- Sidecar naming follows `<base>.<lang>.<ext>` for media player/media server auto-detection.

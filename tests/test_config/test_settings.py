@@ -21,7 +21,8 @@ class TestConfig:
 
         # Test that default values are loaded
         assert config.get("archive.base_directory") == "~/Videos/YouTube"
-        assert config.get("download.format") == "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+        assert config.get("download.format") == "bestvideo*+bestaudio/best"
+        assert config.get("download.container_policy") == "no_webm_prefer_mp4"
         assert config.get("logging.level") == "INFO"
 
     def test_load_user_config(self, sample_config_file):
@@ -160,6 +161,8 @@ class TestConfig:
 
         assert playlist_config["write_subtitles"] is True
         assert playlist_config["embed_subtitles"] is True
+        assert playlist_config["format_sort"] == "res,br,fps,container"
+        assert playlist_config["container_policy"] == "no_webm_prefer_mp4"
         assert playlist_config["write_info_json"] is True
         assert playlist_config["write_max_metadata_json"] is True
         assert playlist_config["write_thumbnail"] is True
@@ -362,6 +365,23 @@ write_max_metadata_json = true
 
         config = Config(config_file)
         with pytest.raises(ConfigurationError, match="download.write_info_json"):
+            config.validate()
+
+    def test_validate_rejects_invalid_container_policy(self, temp_config_dir, temp_dir):
+        """Test container policy only accepts supported enum values."""
+        config_file = temp_config_dir / "config.toml"
+        config_file.write_text(
+            f"""
+[archive]
+base_directory = "{temp_dir}/downloads"
+
+[download]
+container_policy = "wrong_value"
+"""
+        )
+
+        config = Config(config_file)
+        with pytest.raises(ConfigurationError, match="download.container_policy"):
             config.validate()
 
     def test_validate_accepts_valid_filename_settings(self, temp_config_dir, temp_dir):

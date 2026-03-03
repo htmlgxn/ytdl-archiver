@@ -15,8 +15,8 @@ Modern Python CLI for archiving YouTube playlists with media-server-friendly sid
 - [`uv`](https://docs.astral.sh/uv/)
 - FFmpeg on `PATH`
 - (Recommended) External JavaScript runtime (`deno` or `Node.js`) for full yt-dlp extraction compatibility
-- (Recommended) Firefox recommended for cookie extraction
-- (Optional) Rust for setup TUI
+- (Recommended) Firefox for browser cookie extraction
+- (Optional) Rust for setup TUI development
 
 ## Install
 Install with uv (recommended):
@@ -77,10 +77,28 @@ Notes:
 ytdl-archiver archive
 ```
 
-## Core Commands
+## First-Class Commands
+- `archive`: download playlists and generate sidecars
+- `metadata-backfill`: backfill sidecars for already archived IDs in `.archive.txt`
+- `search`: discover channels/playlists and append selected entries to `playlists.toml`
+- `convert-playlists`: convert legacy JSON playlists files to TOML
+- `init`: run interactive setup
+
+## Artifact Outputs (default behavior)
+Successful archive runs produce:
+- Media output (for example `.mp4`)
+- Metadata sidecars: `<stem>.info.json` and `<stem>.metadata.json`
+- Media-server sidecar: `<stem>.nfo` (when enabled)
+- Container policy defaults to max-quality/no-webm outputs (prefers mp4 when quality-tied, otherwise remuxes to mp4/mkv)
+- Subtitle sidecars (language-suffixed, for example `<stem>.en.srt`) with embedding enabled by default
+- Thumbnail sidecar (for example `<stem>.jpg`) when enabled
+
+## Help
 ```bash
 ytdl-archiver --help
 ytdl-archiver archive --help
+ytdl-archiver metadata-backfill --help
+ytdl-archiver search --help
 ytdl-archiver convert-playlists --help
 ytdl-archiver init --help
 ```
@@ -89,6 +107,8 @@ ytdl-archiver init --help
 - Docs index: `docs/index.md`
 - CLI reference: `docs/cli.md`
 - Configuration reference: `docs/configuration.md`
+- Terminal output modes: `docs/terminal-output.md`
 - Development/contributing: `docs/development.md`
 - Migration notes: `MIGRATION.md`
-- Terminal output modes: `docs/terminal-output.md`
+- Release notes (`v0.3.0`): `docs/releases/0.3.0.md`
+- Changelog: `CHANGELOG.md`
