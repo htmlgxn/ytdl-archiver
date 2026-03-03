@@ -136,8 +136,8 @@ class TestMetadataGenerator:
 
         output_path = temp_dir / "test_error.nfo"
 
-        # Mock open to raise permission error
-        mocker.patch("builtins.open", side_effect=PermissionError("Permission denied"))
+        # Mock Path.open to raise permission error
+        mocker.patch("pathlib.Path.open", side_effect=PermissionError("Permission denied"))
 
         with pytest.raises(MetadataError, match="Error writing NFO file"):
             generator.create_nfo_file(mock_video_info, output_path)
@@ -263,3 +263,56 @@ class TestMetadataGenerator:
         assert "<title>Minimal Video</title>" in content
         assert "Unknown Description" in content
         assert "Unknown Channel" in content
+
+    def test_create_tvshow_nfo(self, config, temp_dir):
+        """Test creating tvshow.nfo file."""
+        generator = MetadataGenerator(config)
+
+        output_path = temp_dir / "tvshow.nfo"
+
+        generator.create_tvshow_nfo("Test Channel", output_path)
+
+        assert output_path.exists()
+        content = output_path.read_text(encoding="utf-8")
+
+        # Check for TV show XML structure
+        assert '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' in content
+        assert "<tvshow>" in content
+        assert "<title>Test Channel</title>" in content
+        assert "</tvshow>" in content
+
+    def test_create_tvshow_nfo_xml_escaping(self, config, temp_dir):
+        """Test XML escaping in tvshow.nfo."""
+        generator = MetadataGenerator(config)
+
+        output_path = temp_dir / "tvshow.nfo"
+
+        # Channel name with special characters
+        generator.create_tvshow_nfo("Test & Co. <Channel>", output_path)
+
+        content = output_path.read_text(encoding="utf-8")
+
+        assert "<title>Test &amp; Co. &lt;Channel&gt;</title>" in content
+
+    def test_create_tvshow_nfo_write_error(self, config, temp_dir, mocker):
+        """Test handling of write errors during tvshow.nfo creation."""
+        generator = MetadataGenerator(config)
+
+        output_path = temp_dir / "tvshow.nfo"
+
+        # Mock Path.open to raise permission error
+        mocker.patch("pathlib.Path.open", side_effect=PermissionError("Permission denied"))
+
+        with pytest.raises(MetadataError, match="Error writing TV show NFO file"):
+            generator.create_tvshow_nfo("Test Channel", output_path)
+
+    def test_generate_tvshow_nfo_content(self, config):
+        """Test generating tvshow.nfo content."""
+        generator = MetadataGenerator(config)
+
+        content = generator._generate_tvshow_nfo_content("My Channel")
+
+        assert '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' in content
+        assert "<tvshow>" in content
+        assert "<title>My Channel</title>" in content
+        assert "</tvshow>" in content
