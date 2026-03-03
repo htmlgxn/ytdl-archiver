@@ -250,8 +250,6 @@ path = "My Playlist"
         download_aliases = {
             "format": ("format",),
             "merge_output_format": ("merge_output_format",),
-            "recode_video": ("recode_video",),
-            "postprocessor_args": ("postprocessor_args",),
             "write_subtitles": ("write_subtitles", "writesubtitles"),
             "subtitle_format": ("subtitle_format", "subtitlesformat"),
             "convert_subtitles": ("convert_subtitles", "convertsubtitles"),
