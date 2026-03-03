@@ -569,9 +569,6 @@ class YouTubeDownloader:
     def get_metadata(self, video_url: str) -> dict[str, Any] | None:
         """Get video metadata without downloading."""
         opts = self._build_runtime_ydl_options(include_progress_hooks=False)
-        
-        # Override ignoreerrors for metadata fetch to get proper exceptions
-        opts["ignoreerrors"] = False
 
         verbose = self.config.get("logging.level") == "DEBUG"
 
