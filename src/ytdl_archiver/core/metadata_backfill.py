@@ -1,8 +1,6 @@
 """Metadata backfill workflow for archived YouTube videos."""
 
-import json
 import logging
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
@@ -12,6 +10,8 @@ import yt_dlp
 from ..exceptions import ArchiveError
 from ..output import emit_formatter_message, emit_rendered
 from .archive import ArchiveTracker
+from .downloader import YouTubeDownloader
+from .metadata import MetadataGenerator
 from .utils import build_output_filename
 
 try:
@@ -52,6 +52,8 @@ class MetadataBackfiller:
     def __init__(self, config, formatter=None):
         self.config = config
         self.formatter = formatter
+        self.metadata_generator = MetadataGenerator(config)
+        self.downloader = YouTubeDownloader(config, formatter)
 
     def run(
         self,
@@ -68,12 +70,15 @@ class MetadataBackfiller:
         for playlist in playlists:
             playlist_id = str(playlist.get("id") or "").strip()
             playlist_path = str(playlist.get("path") or "").strip()
+            playlist_name = str(playlist.get("name") or "").strip() or None
             if not playlist_id or not playlist_path:
                 self._emit("warning", "Invalid playlist entry - skipping")
                 continue
 
             playlist_stats = self._process_playlist(
+                playlist_id=playlist_id,
                 playlist_path=playlist_path,
+                playlist_name=playlist_name,
                 scope=scope,
                 refresh_existing=refresh_existing,
                 limit_per_playlist=limit_per_playlist,
@@ -122,7 +127,9 @@ class MetadataBackfiller:
     def _process_playlist(
         self,
         *,
+        playlist_id: str,
         playlist_path: str,
+        playlist_name: str | None,
         scope: str,
         refresh_existing: bool,
         limit_per_playlist: int | None,
@@ -133,6 +140,7 @@ class MetadataBackfiller:
         playlist_directory = self.config.get_archive_directory() / playlist_path
         archive_file = playlist_directory / ".archive.txt"
         archived_ids = self._load_archived_video_ids(archive_file)
+        playlist_config = self.config.get_playlist_config(playlist_id)
 
         if limit_per_playlist is not None:
             archived_ids = archived_ids[:limit_per_playlist]
@@ -149,6 +157,7 @@ class MetadataBackfiller:
                 outcome = self._process_video(
                     video_id=video_id,
                     playlist_directory=playlist_directory,
+                    playlist_config=playlist_config,
                     scope=scope,
                     refresh_existing=refresh_existing,
                 )
@@ -170,7 +179,11 @@ class MetadataBackfiller:
                     ) from e
 
         # Create tvshow.nfo for Jellyfin TV show library treatment
-        self._create_tvshow_nfo_if_needed(playlist_directory)
+        self._create_tvshow_nfo_if_needed(
+            playlist_directory,
+            playlist_name=playlist_name,
+            playlist_path=playlist_path,
+        )
 
         return stats
 
@@ -196,6 +209,7 @@ class MetadataBackfiller:
         *,
         video_id: str,
         playlist_directory: Path,
+        playlist_config: dict[str, Any],
         scope: str,
         refresh_existing: bool,
     ) -> str:
@@ -210,21 +224,75 @@ class MetadataBackfiller:
             playlist_directory, canonical_stem, video_id
         )
 
+        write_info_json = self._resolve_bool_setting(
+            playlist_config, "write_info_json", "writeinfojson", default=True
+        )
+        write_max_metadata = self._resolve_bool_setting(
+            playlist_config, "write_max_metadata_json", default=True
+        )
+        generate_nfo = bool(self.config.get("media_server.generate_nfo", True))
+
         info_json_path = playlist_directory / f"{output_stem}.info.json"
-        if info_json_path.exists() and not refresh_existing:
+        nfo_path = playlist_directory / f"{output_stem}.nfo"
+        metadata_json_path = playlist_directory / f"{output_stem}.metadata.json"
+
+        needs_info_json = bool(
+            write_info_json and (refresh_existing or not info_json_path.exists())
+        )
+        needs_nfo = bool(
+            scope == "full" and generate_nfo and (refresh_existing or not nfo_path.exists())
+        )
+        needs_metadata_json = bool(
+            scope == "full"
+            and write_max_metadata
+            and (refresh_existing or not metadata_json_path.exists())
+        )
+
+        if not (needs_info_json or needs_nfo or needs_metadata_json):
             return "skipped_existing"
 
-        opts = self._build_metadata_only_opts(
-            playlist_directory=playlist_directory,
-            output_stem=output_stem,
-            scope=scope,
-            refresh_existing=refresh_existing,
-        )
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            result = ydl.extract_info(video_url, download=False)
-        if not result:
-            return "failed"
+        extracted_result: dict[str, Any] = metadata
+        if needs_info_json:
+            opts = self._build_metadata_only_opts(
+                playlist_directory=playlist_directory,
+                output_stem=output_stem,
+                scope=scope,
+                refresh_existing=refresh_existing,
+            )
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                result = ydl.extract_info(video_url, download=False)
+            if not isinstance(result, dict) or not result:
+                return "failed"
+            extracted_result = result
+
+        if needs_nfo:
+            self.metadata_generator.create_nfo_file(extracted_result, nfo_path)
+
+        if needs_metadata_json:
+            base_path = self.downloader._resolve_output_base_path(
+                playlist_directory, output_stem, extracted_result
+            )
+            self.downloader._write_max_metadata_sidecar(
+                base_path=base_path,
+                video_url=video_url,
+                download_result=extracted_result,
+            )
+
         return "updated"
+
+    def _resolve_bool_setting(
+        self,
+        playlist_config: dict[str, Any],
+        *keys: str,
+        default: bool,
+    ) -> bool:
+        for key in keys:
+            if key in playlist_config:
+                return bool(playlist_config.get(key))
+            value = self.config.get(f"download.{key}")
+            if value is not None:
+                return bool(value)
+        return default
 
     def _fetch_metadata(self, video_url: str) -> dict[str, Any] | None:
         """Fetch metadata without writing sidecars."""
@@ -320,7 +388,11 @@ class MetadataBackfiller:
         return {key: value for key, value in opts.items() if value is not None}
 
     def _create_tvshow_nfo_if_needed(
-        self, playlist_directory: Path
+        self,
+        playlist_directory: Path,
+        *,
+        playlist_name: str | None,
+        playlist_path: str,
     ) -> bool:
         """Create tvshow.nfo for Jellyfin TV show library treatment if not exists."""
         if not self.config.get("media_server.generate_nfo", True):
@@ -331,13 +403,13 @@ class MetadataBackfiller:
             return False
 
         try:
-            # Extract channel name from existing videos
-            channel_name = self._extract_channel_name_from_existing_videos(
-                playlist_directory
+            tvshow_title = self._resolve_tvshow_title(
+                playlist_directory=playlist_directory,
+                playlist_name=playlist_name,
+                playlist_path=playlist_path,
             )
-            if channel_name:
-                nfo_content = self._generate_tvshow_nfo_content(channel_name)
-                tvshow_nfo_path.write_text(nfo_content, encoding="utf-8")
+            if tvshow_title:
+                self.metadata_generator.create_tvshow_nfo(tvshow_title, tvshow_nfo_path)
                 logger.info(
                     "TV show NFO file created",
                     extra={"nfo_path": str(tvshow_nfo_path)},
@@ -352,62 +424,19 @@ class MetadataBackfiller:
             )
             return False
 
-    def _extract_channel_name_from_existing_videos(
-        self, playlist_directory: Path
-    ) -> str | None:
-        """Extract channel name from existing video NFO files."""
-        # Look for existing episode NFO files and extract channel/studio name
-        for nfo_file in playlist_directory.glob("*.nfo"):
-            if nfo_file.name == "tvshow.nfo":
-                continue
+    def _resolve_tvshow_title(
+        self,
+        *,
+        playlist_directory: Path,
+        playlist_name: str | None,
+        playlist_path: str,
+    ) -> str:
+        configured_name = str(playlist_name or "").strip()
+        if configured_name:
+            return configured_name
 
-            try:
-                content = nfo_file.read_text(encoding="utf-8")
-                channel = self._extract_channel_from_nfo(content)
-                if channel:
-                    return channel
-            except (OSError, UnicodeDecodeError):
-                continue
+        path_name = str(playlist_path or "").strip().rstrip("/\\")
+        if path_name:
+            return Path(path_name).name
 
-        # Fallback: try to extract from info.json files
-        for info_json in playlist_directory.glob("*.info.json"):
-            try:
-                data = json.loads(info_json.read_text(encoding="utf-8"))
-                for key in ("channel", "uploader", "channel_id"):
-                    value = data.get(key)
-                    if value and isinstance(value, str) and value.strip():
-                        return value.strip()
-            except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-                continue
-
-        return None
-
-    def _extract_channel_from_nfo(self, content: str) -> str | None:
-        """Extract channel/studio name from NFO XML content."""
-        # Try to extract <studio> tag from episodedetails
-        match = re.search(r"<studio>([^<]+)</studio>", content)
-        if match:
-            return match.group(1).strip()
-
-        # Try to extract <showtitle> tag
-        match = re.search(r"<showtitle>([^<]+)</showtitle>", content)
-        if match:
-            return match.group(1).strip()
-
-        return None
-
-    def _generate_tvshow_nfo_content(self, channel_name: str) -> str:
-        """Generate tvshow.nfo content from channel name."""
-        # XML escaping
-        escaped_name = (
-            channel_name.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace('"', "&quot;")
-            .replace("'", "&apos;")
-        )
-        return f"""<?xml version="1.0" encoding="utf-8" standalone="yes"?>
-<tvshow>
-  <title>{escaped_name}</title>
-</tvshow>
-"""
+        return playlist_directory.name.strip()

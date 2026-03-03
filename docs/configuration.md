@@ -22,6 +22,7 @@ Startup migration behavior:
 Playlist display metadata:
 - `[[playlists]].name` is used as the `tvshow.nfo` title.
 - If `name` is missing/empty, fallback uses `path`.
+- This title rule is applied by both `archive` and `metadata-backfill`.
 
 ## Default config (`config.toml`)
 ```toml
@@ -178,3 +179,4 @@ Notes:
 - Archive runs now surface a warning in default mode when `<base>.metadata.json` cannot be written.
 - `<base>.metadata.json` sidecars resolve from final media stem when available, with canonical-stem fallback alignment.
 - Metadata sidecar serialization tolerates non-pickleable runtime objects from extractor results.
+- Metadata backfill (`--scope full`) also refreshes per-video `.nfo` and `<base>.metadata.json` using the same config gates.
