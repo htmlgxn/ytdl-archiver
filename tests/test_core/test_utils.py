@@ -258,3 +258,22 @@ class TestUtils:
 
         # Should not raise exception
         setup_logging(config)
+
+    @patch("ytdl_archiver.core.utils.logging.basicConfig")
+    def test_setup_logging_reads_nested_logging_config(self, mock_basic_config):
+        """Test setup logging reads nested config payload used by CLI."""
+        config = {
+            "logging": {
+                "level": "DEBUG",
+                "format": "json",
+                "file_path": "",
+                "max_file_size": "1MB",
+                "backup_count": 3,
+            }
+        }
+
+        setup_logging(config)
+
+        assert mock_basic_config.call_count == 1
+        kwargs = mock_basic_config.call_args.kwargs
+        assert kwargs["level"] == 10  # logging.DEBUG

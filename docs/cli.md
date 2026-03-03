@@ -15,7 +15,8 @@ uv run ytdl-archiver [OPTIONS] COMMAND [ARGS]...
 
 ### Global options
 - `-c, --config PATH`: path to configuration file
-- `-v, --verbose`: verbose logging + detailed technical output
+- `-v, --verbose`: structured technical diagnostics (debug/info) for troubleshooting;
+  does not enable raw yt-dlp passthrough output
 - `-q, --quiet`: minimal output (errors and failure-oriented summary)
 - `--no-color`: disable colored text (symbols/emojis may still appear)
 

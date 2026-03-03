@@ -10,6 +10,7 @@ from ytdl_archiver.core.downloader import (
     suppress_output,
 )
 from ytdl_archiver.exceptions import DownloadError
+from ytdl_archiver.output import ProgressFormatter, VerboseFormatter
 
 
 class TestYouTubeDownloader:
@@ -82,6 +83,45 @@ class TestYouTubeDownloader:
         assert result == mock_video_info
 
     @patch("ytdl_archiver.core.downloader.yt_dlp.YoutubeDL")
+    def test_get_metadata_default_mode_emits_no_debug_output(
+        self, mock_ydl, config, mock_video_info, capsys
+    ):
+        """Test default mode keeps metadata prefetch diagnostics suppressed."""
+        mock_ydl_instance = Mock()
+        mock_ydl.return_value.__enter__ = Mock(return_value=mock_ydl_instance)
+        mock_ydl.return_value.__exit__ = Mock(return_value=False)
+        mock_ydl_instance.extract_info.return_value = mock_video_info
+
+        downloader = YouTubeDownloader(
+            config, formatter=ProgressFormatter(use_colors=False, show_progress=False)
+        )
+        downloader.get_metadata("https://www.youtube.com/watch?v=test_video")
+
+        captured = capsys.readouterr()
+        assert "Metadata prefetch" not in captured.out
+        assert "DEBUG:" not in captured.out
+        assert captured.err == ""
+
+    @patch("ytdl_archiver.core.downloader.yt_dlp.YoutubeDL")
+    def test_get_metadata_verbose_mode_emits_structured_debug(
+        self, mock_ydl, config, mock_video_info, capsys
+    ):
+        """Test verbose mode emits structured metadata diagnostics."""
+        mock_ydl_instance = Mock()
+        mock_ydl.return_value.__enter__ = Mock(return_value=mock_ydl_instance)
+        mock_ydl.return_value.__exit__ = Mock(return_value=False)
+        mock_ydl_instance.extract_info.return_value = mock_video_info
+
+        config.set_logging_level("DEBUG")
+        downloader = YouTubeDownloader(config, formatter=VerboseFormatter(use_colors=False))
+        downloader.get_metadata("https://www.youtube.com/watch?v=test_video")
+
+        captured = capsys.readouterr()
+        assert "Debug:" in captured.out
+        assert "Metadata prefetch started" in captured.out
+        assert "Metadata prefetch succeeded" in captured.out
+
+    @patch("ytdl_archiver.core.downloader.yt_dlp.YoutubeDL")
     def test_extract_metadata_error(self, mock_ydl, config):
         """Test metadata extraction with error."""
         mock_ydl_instance = Mock()
@@ -94,6 +134,33 @@ class TestYouTubeDownloader:
         result = downloader.get_metadata("https://www.youtube.com/watch?v=test_video")
 
         assert result is None
+
+    @patch("ytdl_archiver.core.downloader.yt_dlp.YoutubeDL")
+    def test_get_metadata_failure_debug_only_in_verbose(self, mock_ydl, config, capsys):
+        """Test metadata fallback diagnostics are shown only in verbose mode."""
+        mock_ydl_instance = Mock()
+        mock_ydl.return_value.__enter__ = Mock(return_value=mock_ydl_instance)
+        mock_ydl.return_value.__exit__ = Mock(return_value=False)
+        mock_ydl_instance.extract_info.side_effect = Exception("Network error")
+
+        default_downloader = YouTubeDownloader(
+            config, formatter=ProgressFormatter(use_colors=False, show_progress=False)
+        )
+        default_downloader.get_metadata("https://www.youtube.com/watch?v=test_video")
+        default_captured = capsys.readouterr()
+        assert "Metadata prefetch failed; falling back to direct download" not in (
+            default_captured.out + default_captured.err
+        )
+
+        config.set_logging_level("DEBUG")
+        verbose_downloader = YouTubeDownloader(
+            config, formatter=VerboseFormatter(use_colors=False)
+        )
+        verbose_downloader.get_metadata("https://www.youtube.com/watch?v=test_video")
+        verbose_captured = capsys.readouterr()
+        assert "Metadata prefetch failed; falling back to direct download" in (
+            verbose_captured.out
+        )
 
     @patch("ytdl_archiver.core.downloader.yt_dlp.YoutubeDL")
     def test_download_video_success(self, mock_ydl, config, temp_dir, mock_video_info):

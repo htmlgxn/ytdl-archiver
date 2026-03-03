@@ -2,7 +2,6 @@
 
 import logging
 import re
-import sys
 import time
 from pathlib import Path
 from typing import Any, ClassVar, cast
@@ -274,6 +273,34 @@ class YouTubeDownloader:
         self.config = config
         self.formatter = formatter
         self.ydl_opts = self._build_ydl_options()
+
+    def _verbose_enabled(self) -> bool:
+        """Return True when runtime is configured for verbose diagnostics."""
+        return str(self.config.get("logging.level", "INFO")).upper() == "DEBUG"
+
+    def _emit_verbose_debug(self, message: str, **extra: Any) -> None:
+        """Emit debug diagnostics only in verbose mode."""
+        if not self._verbose_enabled():
+            return
+        emit_formatter_message(self.formatter, "debug", message)
+        if extra:
+            logger.debug(message, extra=extra)
+        else:
+            logger.debug(message)
+
+    @staticmethod
+    def _runtime_option_snapshot(opts: dict[str, Any]) -> dict[str, Any]:
+        """Build a sanitized option snapshot for diagnostic output."""
+        return {
+            "cookiefile": bool(opts.get("cookiefile")),
+            "format": opts.get("format"),
+            "format_sort": opts.get("format_sort"),
+            "socket_timeout": opts.get("socket_timeout"),
+            "connect_timeout": opts.get("connect_timeout"),
+            "writesubtitles": opts.get("writesubtitles"),
+            "writethumbnail": opts.get("writethumbnail"),
+            "postprocessors_count": len(opts.get("postprocessors", [])),
+        }
 
     @staticmethod
     def _format_size_from_bytes(total_bytes: int) -> str:
@@ -560,37 +587,38 @@ class YouTubeDownloader:
     def get_metadata(self, video_url: str) -> dict[str, Any] | None:
         """Get video metadata without downloading."""
         opts = self._build_runtime_ydl_options(include_progress_hooks=False)
-        
-        # TEMPORARY: Disable ignoreerrors to see actual yt-dlp errors
+
+        # Keep explicit failure signals for metadata prefetch fallback handling.
         opts["ignoreerrors"] = False
-
-        verbose = self.config.get("logging.level") == "DEBUG"
-
-        # DEBUG: Print options to stderr
-        print(f"DEBUG: get_metadata {video_url}", file=sys.stderr, flush=True)
-        print(f"DEBUG: cookiefile={opts.get('cookiefile')}", file=sys.stderr, flush=True)
-        print(f"DEBUG: format={repr(opts.get('format'))}", file=sys.stderr, flush=True)
-        print(f"DEBUG: format_sort={repr(opts.get('format_sort'))}", file=sys.stderr, flush=True)
-        print(f"DEBUG: extractor_args={opts.get('extractor_args')}", file=sys.stderr, flush=True)
+        runtime_snapshot = self._runtime_option_snapshot(opts)
+        self._emit_verbose_debug(
+            f"Metadata prefetch started: {video_url}",
+            video_url=video_url,
+            runtime_opts=runtime_snapshot,
+        )
 
         try:
-            if verbose:
-                logger.debug("Fetching metadata", extra={"video_url": video_url})
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info_dict = ydl.extract_info(video_url, download=False)
                 if info_dict is None:
-                    print(f"DEBUG: yt-dlp returned None", file=sys.stderr, flush=True)
+                    self._emit_verbose_debug(
+                        "Metadata prefetch returned no data",
+                        video_url=video_url,
+                        runtime_opts=runtime_snapshot,
+                    )
                     return None
-                print(f"DEBUG: SUCCESS {info_dict.get('title')}", file=sys.stderr, flush=True)
+                self._emit_verbose_debug(
+                    f"Metadata prefetch succeeded: {info_dict.get('title', 'Unknown')}",
+                    video_url=video_url,
+                    title=info_dict.get("title"),
+                )
                 return info_dict
         except Exception as e:
-            print(f"DEBUG ERROR: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
-            # Log at debug level since we have a fallback
-            if verbose:
-                logger.debug(
-                    "Metadata prefetch failed (will use direct download)",
-                    extra={"video_url": video_url, "error": str(e)},
-                )
+            self._emit_verbose_debug(
+                f"Metadata prefetch failed; falling back to direct download ({type(e).__name__}: {e!s})",
+                video_url=video_url,
+                error=str(e),
+            )
             return None
 
     def download_video_with_config(
@@ -602,10 +630,9 @@ class YouTubeDownloader:
         """Download video and handle directory structure based on metadata."""
         metadata = self.get_metadata(video_url)
         if metadata is None:
-            emit_formatter_message(
-                self.formatter,
-                "warning",
+            self._emit_verbose_debug(
                 "Metadata prefetch failed. Falling back to direct download.",
+                video_url=video_url,
             )
 
         filename = self._build_output_filename(metadata, video_url)
