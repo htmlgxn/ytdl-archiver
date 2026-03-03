@@ -350,6 +350,43 @@ class TestPlaylistArchiver:
         assert created is True
         create_nfo.assert_called_once_with(metadata, temp_dir / f"{expected_stem}.nfo")
 
+    def test_process_playlist_passes_download_result_to_nfo_generation(
+        self, config, temp_dir, mocker
+    ):
+        """Test enriched download result fields are preserved for NFO generation."""
+        config._config["archive"]["base_directory"] = str(temp_dir)
+        formatter = Mock()
+        formatter.playlist_start.return_value = "playlist-start"
+        formatter.playlist_summary.return_value = "playlist-summary"
+        formatter.artifact_complete.return_value = "nfo-sidecar"
+        formatter.warning.return_value = ""
+        archiver = PlaylistArchiver(config, formatter=formatter)
+
+        mocker.patch.object(
+            archiver,
+            "_get_playlist_info",
+            return_value={"entries": [{"id": "video1", "title": "Video 1"}]},
+        )
+        download_result = {
+            "id": "video1",
+            "title": "Video 1",
+            "playlist_index": 7,
+            "upload_date": "20240101",
+        }
+        mocker.patch.object(
+            archiver.downloader,
+            "download_video_with_config",
+            return_value=download_result,
+        )
+        mocker.patch.object(config, "get_playlist_config", return_value={})
+        generate_nfo = mocker.patch.object(archiver, "_generate_nfo_if_needed", return_value=False)
+
+        archiver.process_playlist("playlist-id", "PlaylistPath")
+
+        assert generate_nfo.call_count == 1
+        passed_metadata = generate_nfo.call_args.args[0]
+        assert passed_metadata["playlist_index"] == 7
+
     def test_process_playlist_emits_aggregated_already_downloaded_once(
         self, config, temp_dir, mocker
     ):

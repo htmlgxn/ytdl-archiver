@@ -174,6 +174,15 @@ class BaseFormatter:
             parts.append(f"[{', '.join(bracket_bits)}]")
         return f"{Symbols.SUCCESS} {' '.join(parts)}"
 
+    def subtitle_downloaded(self, title: str, status: str) -> str:
+        """Print subtitle completion message."""
+        label = self._status_label("Downloaded subtitles:")
+        state = status.strip()
+        parts = [label, title]
+        if state:
+            parts.append(f"[{state}]")
+        return f"{Symbols.SUCCESS} {' '.join(parts)}"
+
     def thumbnail_generated(self, title: str, extension: str = "") -> str:
         """Print thumbnail generation message."""
         label = self._status_label("Thumbnail generated:")
@@ -423,6 +432,11 @@ class QuietFormatter(BaseFormatter):
     def file_generated(self, file_type: str) -> str:
         """Print file generation (quiet mode - minimal)."""
         _ = file_type
+        return ""
+
+    def subtitle_downloaded(self, title: str, status: str) -> str:
+        """Print subtitle completion (quiet mode - minimal)."""
+        _ = (title, status)
         return ""
 
     def playlist_summary(self, stats: dict[str, int]) -> str:

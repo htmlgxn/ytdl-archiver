@@ -297,7 +297,7 @@ class MetadataBackfiller:
                 "outtmpl": {
                     "default": output_base,
                     "subtitle": str(
-                        playlist_directory / f"{output_stem}.%(subtitle_lang)s.%(ext)s"
+                        playlist_directory / f"{output_stem}.%(lang)s.%(ext)s"
                     ),
                     "thumbnail": output_base,
                 },

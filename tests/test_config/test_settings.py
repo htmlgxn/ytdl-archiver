@@ -159,9 +159,51 @@ class TestConfig:
         playlist_config = config.get_playlist_config("default_playlist")
 
         assert playlist_config["write_subtitles"] is True
+        assert playlist_config["embed_subtitles"] is True
+        assert playlist_config["write_info_json"] is True
+        assert playlist_config["write_max_metadata_json"] is True
         assert playlist_config["write_thumbnail"] is True
-        assert playlist_config["subtitle_format"] == "vtt"
+        assert playlist_config["subtitle_format"] == "srt/best"
         assert playlist_config["convert_subtitles"] == "srt"
+
+    def test_playlist_config_accepts_embed_subtitles_alias(self, temp_config_dir):
+        """Test playlist override supports embed_subtitles/embedsubtitles aliases."""
+        config_file = temp_config_dir / "config.toml"
+        config_file.write_text("")
+        playlists_file = temp_config_dir / "playlists.toml"
+        playlists_file.write_text(
+            """
+[[playlists]]
+id = "embed_playlist"
+path = "A"
+[playlists.download]
+embedsubtitles = false
+"""
+        )
+
+        config = Config(config_file)
+        playlist_config = config.get_playlist_config("embed_playlist")
+        assert playlist_config["embed_subtitles"] is False
+
+    def test_playlist_config_accepts_write_info_json_alias(self, temp_config_dir):
+        """Test playlist override supports write_info_json/writeinfojson aliases."""
+        config_file = temp_config_dir / "config.toml"
+        config_file.write_text("")
+        playlists_file = temp_config_dir / "playlists.toml"
+        playlists_file.write_text(
+            """
+[[playlists]]
+id = "infojson_playlist"
+path = "A"
+[playlists.download]
+writeinfojson = false
+"""
+        )
+
+        config = Config(config_file)
+        playlist_config = config.get_playlist_config("infojson_playlist")
+        assert playlist_config["write_info_json"] is False
+        assert playlist_config["write_max_metadata_json"] is True
 
     def test_playlists_file_override_is_used(self, temp_config_dir, temp_dir):
         """Test explicit playlists file override from CLI/config API."""
@@ -303,6 +345,24 @@ refresh_on_startup = true
 
         config = Config(config_file)
         config.validate()
+
+    def test_validate_rejects_non_boolean_metadata_flags(self, temp_config_dir, temp_dir):
+        """Test metadata sidecar flags require boolean values."""
+        config_file = temp_config_dir / "config.toml"
+        config_file.write_text(
+            f"""
+[archive]
+base_directory = "{temp_dir}/downloads"
+
+[download]
+write_info_json = "yes"
+write_max_metadata_json = true
+"""
+        )
+
+        config = Config(config_file)
+        with pytest.raises(ConfigurationError, match="download.write_info_json"):
+            config.validate()
 
     def test_validate_accepts_valid_filename_settings(self, temp_config_dir, temp_dir):
         """Test valid filename settings pass validation."""

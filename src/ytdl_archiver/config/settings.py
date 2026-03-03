@@ -250,7 +250,10 @@ path = "My Playlist"
         download_aliases = {
             "format": ("format",),
             "merge_output_format": ("merge_output_format",),
+            "write_info_json": ("write_info_json", "writeinfojson"),
+            "write_max_metadata_json": ("write_max_metadata_json",),
             "write_subtitles": ("write_subtitles", "writesubtitles"),
+            "embed_subtitles": ("embed_subtitles", "embedsubtitles"),
             "subtitle_format": ("subtitle_format", "subtitlesformat"),
             "convert_subtitles": ("convert_subtitles", "convertsubtitles"),
             "subtitle_languages": ("subtitle_languages", "subtitleslangs"),
@@ -264,8 +267,13 @@ path = "My Playlist"
                     merged_config[canonical_key] = global_value
                     break
 
-        # Override with playlist-specific settings
-        playlist_overrides = playlist_data.get("download", {})
+        # Override with playlist-specific settings (normalize alias keys first)
+        playlist_overrides_raw = playlist_data.get("download", {})
+        playlist_overrides: dict[str, Any] = dict(playlist_overrides_raw)
+        for canonical_key, aliases in download_aliases.items():
+            for alias in aliases:
+                if alias in playlist_overrides_raw:
+                    playlist_overrides[canonical_key] = playlist_overrides_raw[alias]
         merged_config.update(playlist_overrides)
 
         return merged_config
@@ -291,6 +299,13 @@ path = "My Playlist"
         download_format = self.get("download.format")
         if not download_format:
             raise ConfigurationError("Download format cannot be empty")
+
+        for key in ("download.write_info_json", "download.write_max_metadata_json"):
+            value = self.get(key)
+            if not isinstance(value, bool):
+                raise ConfigurationError(
+                    f"Invalid {key} value; expected true or false"
+                )
 
         # Validate cookie refresh settings
         cookie_source = str(self.get("cookies.source", "manual_file")).lower()

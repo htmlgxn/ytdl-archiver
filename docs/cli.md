@@ -44,6 +44,7 @@ Options:
 Notes:
 - If `--cookies-browser` is omitted, cookie refresh can still happen from config (`cookies.source = "browser"` and `cookies.refresh_on_startup = true`).
 - `--cookies-browser` and `--cookies-profile` override config for the current run.
+- By default, each successful download writes both `<stem>.info.json` (yt-dlp sidecar) and `<stem>.metadata.json` (project-owned full metadata payload), plus enriched per-video `.nfo` when enabled.
 
 ## `convert-playlists`
 ```bash

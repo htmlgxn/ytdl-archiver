@@ -1,5 +1,6 @@
 """Tests for YouTube downloader functionality."""
 
+import json
 from unittest.mock import Mock, patch
 
 import pytest
@@ -33,6 +34,16 @@ class TestYouTubeDownloader:
         # Check that global config values are used
         assert opts["format"] == config.get("download.format")
         assert opts["writesubtitles"] == config.get("download.write_subtitles")
+        assert opts["embedsubtitles"] == config.get("download.embed_subtitles")
+        assert opts["writeinfojson"] == config.get("download.write_info_json")
+        assert opts["subtitlesformat"] == config.get("download.subtitle_format")
+        postprocessor_keys = [pp["key"] for pp in opts["postprocessors"]]
+        assert "FFmpegSubtitlesConvertor" in postprocessor_keys
+        assert "FFmpegEmbedSubtitle" in postprocessor_keys
+        embed_pp = next(
+            pp for pp in opts["postprocessors"] if pp["key"] == "FFmpegEmbedSubtitle"
+        )
+        assert embed_pp["already_have_subtitle"] is True
         assert opts["writethumbnail"] == config.get("download.write_thumbnail")
 
     def test_build_ydl_options_with_playlist_config(self, config):
@@ -57,16 +68,34 @@ class TestYouTubeDownloader:
         downloader = YouTubeDownloader(config)
 
         playlist_config = {
+            "write_info_json": False,
             "write_subtitles": False,
+            "embed_subtitles": False,
             "subtitle_languages": ["en", "es"],
             "write_thumbnail": False,
         }
 
         opts = downloader._build_ydl_options(playlist_config)
 
+        assert opts["writeinfojson"] is False
         assert opts["writesubtitles"] is False
+        assert opts["embedsubtitles"] is False
         assert opts["subtitleslangs"] == ["en", "es"]
         assert opts["writethumbnail"] is False
+
+    def test_build_ydl_options_disables_embed_processor_when_configured(self, config):
+        """Test subtitle embed postprocessor is omitted when disabled."""
+        downloader = YouTubeDownloader(config)
+
+        playlist_config = {
+            "write_subtitles": True,
+            "embed_subtitles": False,
+            "convert_subtitles": "srt",
+        }
+        opts = downloader._build_ydl_options(playlist_config)
+        postprocessor_keys = [pp["key"] for pp in opts["postprocessors"]]
+        assert "FFmpegSubtitlesConvertor" in postprocessor_keys
+        assert "FFmpegEmbedSubtitle" not in postprocessor_keys
 
     @patch("ytdl_archiver.core.downloader.yt_dlp.YoutubeDL")
     def test_extract_metadata_success(self, mock_ydl, config, mock_video_info):
@@ -182,6 +211,8 @@ class TestYouTubeDownloader:
 
         assert result is not None
         assert result == mock_video_info
+        opts = mock_ydl.call_args.args[0]
+        assert opts["outtmpl"]["subtitle"].endswith(".%(lang)s.%(ext)s")
 
     @patch("ytdl_archiver.core.downloader.yt_dlp.YoutubeDL")
     def test_download_video_failure(self, mock_ydl, config, temp_dir):
@@ -411,6 +442,81 @@ class TestYouTubeDownloader:
 
         assert opts["cookiefile"] == str(cookie_file)
 
+    def test_runtime_options_write_info_json_enabled_by_default(self, config):
+        """Test runtime yt-dlp options enable info JSON sidecars by default."""
+        downloader = YouTubeDownloader(config)
+        opts = downloader._build_runtime_ydl_options()
+
+        assert opts["writeinfojson"] is True
+
+    def test_download_video_with_config_writes_max_metadata_json_sidecar(
+        self, config, temp_dir, mocker
+    ):
+        """Test downloader writes project-owned max metadata JSON sidecar."""
+        config._config["archive"]["delay_between_videos"] = 0
+        downloader = YouTubeDownloader(config)
+        video_url = "https://www.youtube.com/watch?v=test_video"
+        metadata = {
+            "id": "test_video",
+            "title": "Test Video",
+            "uploader": "Test Channel",
+            "upload_date": "20240101",
+        }
+        filename = downloader._build_output_filename(metadata, video_url)
+
+        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
+        mocker.patch.object(
+            downloader,
+            "_download_with_effective_config",
+            return_value={
+                "id": "test_video",
+                "title": "Test Video",
+                "extractor": "youtube",
+                "webpage_url": video_url,
+            },
+        )
+        mocker.patch.object(downloader, "_emit_post_download_generated_lines")
+
+        downloader.download_video_with_config(video_url, temp_dir, {})
+
+        metadata_path = temp_dir / f"{filename}.metadata.json"
+        assert metadata_path.exists()
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        assert payload["video_url"] == video_url
+        assert payload["extractor"] == "youtube"
+        assert payload["metadata"]["id"] == "test_video"
+        assert "generated_at" in payload
+
+    def test_download_video_with_config_disables_max_metadata_json_when_configured(
+        self, config, temp_dir, mocker
+    ):
+        """Test write_max_metadata_json disables only project metadata sidecar."""
+        config._config["archive"]["delay_between_videos"] = 0
+        config._config["download"]["write_max_metadata_json"] = False
+        downloader = YouTubeDownloader(config)
+        video_url = "https://www.youtube.com/watch?v=test_video"
+        metadata = {
+            "id": "test_video",
+            "title": "Test Video",
+            "uploader": "Test Channel",
+            "upload_date": "20240101",
+        }
+        filename = downloader._build_output_filename(metadata, video_url)
+
+        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
+        mocker.patch.object(
+            downloader,
+            "_download_with_effective_config",
+            return_value={"id": "test_video", "title": "Test Video"},
+        )
+        mocker.patch.object(downloader, "_emit_post_download_generated_lines")
+
+        downloader.download_video_with_config(video_url, temp_dir, {})
+
+        assert not (temp_dir / f"{filename}.metadata.json").exists()
+        opts = downloader._build_runtime_ydl_options()
+        assert opts["writeinfojson"] is True
+
     def test_is_short_vertical_video(self, mock_short_video_info):
         """Test short video detection for vertical aspect ratio."""
         from ytdl_archiver.core.utils import is_short
@@ -488,7 +594,7 @@ class TestProgressCallback:
     """Test cases for progress callback completion formatting."""
 
     def test_finished_events_emit_main_and_sidecar_once(self):
-        """Test one main completion plus deduplicated sidecar completion."""
+        """Test progress callback emits primary completion and defers subtitle lines."""
         formatter = Mock()
         formatter.video_complete.return_value = "main-line"
         formatter.artifact_complete.return_value = "sidecar-line"
@@ -536,10 +642,193 @@ class TestProgressCallback:
         formatter.video_complete.assert_called_once_with(
             "Sample Video", "1080p", ".mp4", "100mb"
         )
-        formatter.artifact_complete.assert_called_once_with("Sample Video", ".srt", "")
+        formatter.artifact_complete.assert_not_called()
         emitted = [call.args[0] for call in emit.call_args_list]
         assert emitted.count("main-line") == 1
-        assert emitted.count("sidecar-line") == 1
+        assert emitted.count("sidecar-line") == 0
+
+    def test_subtitle_event_before_video_suppresses_unknown_artifact_line(self):
+        """Test subtitle completion is suppressed until a real title is known."""
+        formatter = Mock()
+        formatter.video_complete.return_value = "main-line"
+        formatter.artifact_complete.return_value = "sidecar-line"
+        callback = ProgressCallback(formatter)
+
+        with patch("ytdl_archiver.core.downloader.emit_rendered"):
+            callback(
+                {
+                    "status": "finished",
+                    "filename": "/tmp/sample-video.en.vtt",
+                    "info_dict": {"ext": "vtt"},
+                }
+            )
+
+        formatter.video_complete.assert_not_called()
+        formatter.artifact_complete.assert_not_called()
+
+    def test_subtitle_event_reuses_current_video_title(self):
+        """Test subtitle callback path does not emit sidecar completion lines."""
+        formatter = Mock()
+        formatter.video_complete.return_value = "main-line"
+        formatter.artifact_complete.return_value = "sidecar-line"
+        callback = ProgressCallback(formatter)
+
+        with patch("ytdl_archiver.core.downloader.emit_rendered"):
+            callback(
+                {
+                    "status": "downloading",
+                    "info_dict": {"title": "Current Video"},
+                    "_percent_str": "10%",
+                    "_speed_str": "1MiB/s",
+                    "_eta_str": "00:10",
+                }
+            )
+            callback(
+                {
+                    "status": "finished",
+                    "filename": "/tmp/current-video.en.vtt",
+                    "info_dict": {"ext": "vtt"},
+                }
+            )
+
+        formatter.artifact_complete.assert_not_called()
+
+    def test_download_video_with_config_emits_subtitle_downloaded_converted_status(
+        self, config, temp_dir, mocker
+    ):
+        """Test converted subtitle status is emitted from filesystem scan."""
+        config._config["archive"]["delay_between_videos"] = 0
+        downloader = YouTubeDownloader(config, formatter=Mock())
+        formatter = downloader.formatter
+        assert formatter is not None
+        formatter.thumbnail_generated.return_value = "thumbnail-line"
+        formatter.mp4_generated.return_value = "mp4-line"
+        formatter.subtitle_downloaded.return_value = "subtitle-line"
+
+        metadata = {"title": "Test Video", "width": 1920, "height": 1080}
+        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
+        mocker.patch.object(
+            downloader,
+            "_download_with_effective_config",
+            return_value={"title": "Test Video", "width": 1920, "height": 1080},
+        )
+
+        filename = downloader._build_output_filename(
+            metadata, "https://www.youtube.com/watch?v=test_video"
+        )
+        (temp_dir / f"{filename}.en.vtt").write_text("vtt")
+        (temp_dir / f"{filename}.en.srt").write_text("srt")
+        (temp_dir / f"{filename}.mp4").write_bytes(b"x")
+
+        with patch("ytdl_archiver.core.downloader.emit_rendered") as emit:
+            downloader.download_video_with_config(
+                "https://www.youtube.com/watch?v=test_video",
+                temp_dir,
+                None,
+            )
+
+        formatter.subtitle_downloaded.assert_called_once_with(
+            "Test Video", ".vtt -> .srt"
+        )
+        emitted = [call.args[0] for call in emit.call_args_list]
+        assert "subtitle-line" in emitted
+
+    def test_download_video_with_config_emits_subtitle_downloaded_native_srt_status(
+        self, config, temp_dir, mocker
+    ):
+        """Test native .srt subtitle status is emitted from filesystem scan."""
+        config._config["archive"]["delay_between_videos"] = 0
+        downloader = YouTubeDownloader(config, formatter=Mock())
+        formatter = downloader.formatter
+        assert formatter is not None
+        formatter.subtitle_downloaded.return_value = "subtitle-line"
+
+        metadata = {"title": "Test Video", "width": 1920, "height": 1080}
+        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
+        mocker.patch.object(
+            downloader,
+            "_download_with_effective_config",
+            return_value={"title": "Test Video", "width": 1920, "height": 1080},
+        )
+
+        filename = downloader._build_output_filename(
+            metadata, "https://www.youtube.com/watch?v=test_video"
+        )
+        (temp_dir / f"{filename}.en.srt").write_text("srt")
+
+        with patch("ytdl_archiver.core.downloader.emit_rendered"):
+            downloader.download_video_with_config(
+                "https://www.youtube.com/watch?v=test_video",
+                temp_dir,
+                None,
+            )
+
+        formatter.subtitle_downloaded.assert_called_once_with("Test Video", ".srt")
+
+    def test_download_video_with_config_emits_subtitle_downloaded_fallback_status(
+        self, config, temp_dir, mocker
+    ):
+        """Test fallback subtitle extension status is emitted from filesystem scan."""
+        config._config["archive"]["delay_between_videos"] = 0
+        downloader = YouTubeDownloader(config, formatter=Mock())
+        formatter = downloader.formatter
+        assert formatter is not None
+        formatter.subtitle_downloaded.return_value = "subtitle-line"
+
+        metadata = {"title": "Test Video", "width": 1920, "height": 1080}
+        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
+        mocker.patch.object(
+            downloader,
+            "_download_with_effective_config",
+            return_value={"title": "Test Video", "width": 1920, "height": 1080},
+        )
+
+        filename = downloader._build_output_filename(
+            metadata, "https://www.youtube.com/watch?v=test_video"
+        )
+        (temp_dir / f"{filename}.en.vtt").write_text("vtt")
+
+        with patch("ytdl_archiver.core.downloader.emit_rendered"):
+            downloader.download_video_with_config(
+                "https://www.youtube.com/watch?v=test_video",
+                temp_dir,
+                None,
+            )
+
+        formatter.subtitle_downloaded.assert_called_once_with("Test Video", ".vtt")
+
+    def test_download_video_with_config_dedupes_subtitle_lines_between_callback_and_scan(
+        self, config, temp_dir, mocker
+    ):
+        """Test subtitle path dedupe suppresses duplicate per-file status lines."""
+        config._config["archive"]["delay_between_videos"] = 0
+        downloader = YouTubeDownloader(config, formatter=Mock())
+        formatter = downloader.formatter
+        assert formatter is not None
+        formatter.subtitle_downloaded.return_value = "subtitle-line"
+
+        metadata = {"title": "Test Video", "width": 1920, "height": 1080}
+        filename = downloader._build_output_filename(
+            metadata, "https://www.youtube.com/watch?v=test_video"
+        )
+
+        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
+        mocker.patch.object(
+            downloader,
+            "_download_with_effective_config",
+            return_value={"title": "Test Video", "width": 1920, "height": 1080},
+        )
+        (temp_dir / f"{filename}.en.srt").write_text("srt")
+        (temp_dir / f"{filename}.en.vtt").write_text("vtt")
+
+        with patch("ytdl_archiver.core.downloader.emit_rendered"):
+            downloader.download_video_with_config(
+                "https://www.youtube.com/watch?v=test_video",
+                temp_dir,
+                None,
+            )
+
+        formatter.subtitle_downloaded.assert_called_once_with("Test Video", ".vtt -> .srt")
 
     def test_extension_falls_back_to_info_dict_and_normalizes(self):
         """Test extension extraction normalizes uppercase ext without filename."""

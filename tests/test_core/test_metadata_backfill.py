@@ -88,6 +88,7 @@ class TestMetadataBackfiller:
             assert opts["writeautomaticsub"] is True
             assert opts["writethumbnail"] is True
             assert opts["writecomments"] is True
+            assert opts["outtmpl"]["subtitle"].endswith(".%(lang)s.%(ext)s")
 
     def test_backfill_skips_existing_info_json_when_refresh_disabled(
         self, config, temp_dir, mocker
