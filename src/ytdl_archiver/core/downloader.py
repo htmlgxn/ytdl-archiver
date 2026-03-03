@@ -372,8 +372,7 @@ class YouTubeDownloader:
         # Start with global defaults
         opts = {
             "format": first_defined("format"),
-            # TEMP: Disable format_sort - yt-dlp 2026.02.21 rejects valid syntax
-            # "format_sort": first_defined("format_sort"),
+            "format_sort": first_defined("format_sort"),
             "merge_output_format": first_defined("merge_output_format"),
             "http_headers": {
                 "User-Agent": self.config.get("http.user_agent"),
@@ -438,6 +437,11 @@ class YouTubeDownloader:
     ) -> dict[str, Any]:
         """Build effective yt-dlp options used at runtime."""
         opts = self._build_ydl_options(playlist_config)
+        
+        # Convert format_sort from comma-separated string to list for Python API
+        format_sort = opts.get("format_sort")
+        if format_sort and isinstance(format_sort, str):
+            opts["format_sort"] = [s.strip() for s in format_sort.split(",")]
 
         opts.update(
             {
