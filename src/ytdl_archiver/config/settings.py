@@ -68,7 +68,7 @@ class Config:
         defaults_path = Path(__file__).parent / "defaults.toml"
         try:
             self._config = toml.load(defaults_path)
-        except Exception as e:
+        except (toml.TomlDecodeError, OSError) as e:
             raise ConfigurationError(
                 f"Failed to load default configuration: {e}"
             ) from e
@@ -81,7 +81,7 @@ class Config:
                 logger.info(
                     "Loaded user configuration", extra={"path": str(self.config_path)}
                 )
-            except Exception as e:
+            except (toml.TomlDecodeError, OSError) as e:
                 logger.exception(
                     "Failed to load user configuration", extra={"error": str(e)}
                 )
@@ -222,7 +222,7 @@ path = "My Playlist"
                     return [
                         {"id": p.get("id"), "path": p.get("path")} for p in playlists
                     ]
-        except Exception as e:
+        except (toml.TomlDecodeError, json.JSONDecodeError, OSError) as e:
             raise ConfigurationError(f"Failed to load playlists: {e}") from e
 
     def get_playlist_config(
@@ -250,6 +250,8 @@ path = "My Playlist"
         download_aliases = {
             "format": ("format",),
             "merge_output_format": ("merge_output_format",),
+            "recode_video": ("recode_video",),
+            "postprocessor_args": ("postprocessor_args",),
             "write_subtitles": ("write_subtitles", "writesubtitles"),
             "subtitle_format": ("subtitle_format", "subtitlesformat"),
             "convert_subtitles": ("convert_subtitles", "convertsubtitles"),
