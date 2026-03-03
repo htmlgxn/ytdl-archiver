@@ -20,6 +20,10 @@ from tenacity import (
 from ..config.settings import Config
 from ..exceptions import DownloadError
 from ..output import emit_formatter_message, emit_rendered
+from .artifacts import (
+    rename_stem_artifacts,
+    stem_looks_like_fallback,
+)
 from .utils import (
     build_output_filename,
     extract_video_id,
@@ -698,10 +702,87 @@ class YouTubeDownloader:
             return canonical_base
         return canonical_base
 
+    def _resolve_effective_stem(
+        self,
+        *,
+        output_directory: Path,
+        filename: str,
+        video_url: str,
+        download_result: dict[str, Any] | None,
+    ) -> str:
+        """Resolve final stem, reconciling fallback names after download."""
+        source_stem = filename
+        media_path = self._resolve_final_media_path(output_directory, filename, download_result)
+        if media_path is not None:
+            source_stem = media_path.stem
+
+        if not isinstance(download_result, dict) or not download_result:
+            return source_stem
+
+        target_stem = self._build_output_filename(download_result, video_url)
+        if not target_stem:
+            return source_stem
+        if source_stem == target_stem:
+            return source_stem
+        if "unknown-channel" in target_stem and "unknown-channel" not in source_stem:
+            return source_stem
+        if stem_looks_like_fallback(target_stem) and not stem_looks_like_fallback(source_stem):
+            return source_stem
+        if stem_looks_like_fallback(source_stem) and stem_looks_like_fallback(target_stem):
+            return source_stem
+
+        rename_result = rename_stem_artifacts(output_directory, source_stem, target_stem)
+        if rename_result.status == "renamed":
+            self._emit_verbose_debug(
+                "Reconciled artifact stem from final metadata",
+                source_stem=source_stem,
+                target_stem=target_stem,
+                renamed_count=rename_result.renamed_count,
+                video_url=video_url,
+            )
+            return target_stem
+
+        if rename_result.status == "conflict":
+            emit_formatter_message(
+                self.formatter,
+                "warning",
+                (
+                    "Rename skipped: target stem already exists "
+                    f"({source_stem} -> {target_stem})"
+                ),
+            )
+            self._emit_verbose_debug(
+                "Stem reconciliation skipped due to conflict",
+                source_stem=source_stem,
+                target_stem=target_stem,
+                conflict_path=str(rename_result.conflict_path) if rename_result.conflict_path else "",
+                video_url=video_url,
+            )
+            return source_stem
+
+        if rename_result.status == "failed":
+            emit_formatter_message(
+                self.formatter,
+                "warning",
+                (
+                    "Rename failed: could not reconcile artifact stem "
+                    f"({source_stem} -> {target_stem})"
+                ),
+            )
+            self._emit_verbose_debug(
+                "Stem reconciliation failed",
+                source_stem=source_stem,
+                target_stem=target_stem,
+                video_url=video_url,
+            )
+            return source_stem
+
+        return source_stem
+
     def _emit_post_download_generated_lines(
         self,
         output_directory: Path,
-        filename: str,
+        stem: str,
         download_result: dict[str, Any] | None,
         metadata: dict[str, Any] | None,
     ) -> None:
@@ -712,12 +793,12 @@ class YouTubeDownloader:
         title = self._extract_title(download_result, metadata)
         resolution = self._extract_resolution_from_metadata(download_result or metadata)
 
-        thumbnail = self._first_existing_thumbnail(output_directory, filename)
+        thumbnail = self._first_existing_thumbnail(output_directory, stem)
         if thumbnail is not None:
             _, thumbnail_ext = thumbnail
             emit_rendered(self.formatter.thumbnail_generated(title, thumbnail_ext))
 
-        media_path = self._resolve_final_media_path(output_directory, filename, download_result)
+        media_path = self._resolve_final_media_path(output_directory, stem, download_result)
         if media_path is not None:
             media_size = self._format_size_from_bytes(media_path.stat().st_size)
             emit_rendered(
@@ -727,7 +808,7 @@ class YouTubeDownloader:
             )
 
         subtitle_files, subtitle_candidates = self._collect_existing_subtitles(
-            output_directory, filename
+            output_directory, stem
         )
         requested_subtitles: dict[str, Any] | None = None
         if isinstance(download_result, dict):
@@ -1146,6 +1227,12 @@ class YouTubeDownloader:
             filename,
             effective_playlist_config or None,
         )
+        effective_stem = self._resolve_effective_stem(
+            output_directory=output_directory,
+            filename=filename,
+            video_url=video_url,
+            download_result=download_result,
+        )
         effective_write_max_metadata = self.config.get(
             "download.write_max_metadata_json", True
         )
@@ -1158,7 +1245,7 @@ class YouTubeDownloader:
             )
         if effective_write_max_metadata:
             output_base_path = self._resolve_output_base_path(
-                output_directory, filename, download_result
+                output_directory, effective_stem, download_result
             )
             self._write_max_metadata_sidecar(
                 base_path=output_base_path,
@@ -1166,7 +1253,7 @@ class YouTubeDownloader:
                 download_result=download_result,
             )
         self._emit_post_download_generated_lines(
-            output_directory, filename, download_result, metadata
+            output_directory, effective_stem, download_result, metadata
         )
         return download_result
 

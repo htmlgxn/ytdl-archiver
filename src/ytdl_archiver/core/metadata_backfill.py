@@ -9,6 +9,7 @@ import yt_dlp
 
 from ..exceptions import ArchiveError
 from ..output import emit_formatter_message, emit_rendered
+from .artifacts import rename_stem_artifacts, stem_looks_like_fallback
 from .archive import ArchiveTracker
 from .downloader import YouTubeDownloader
 from .metadata import MetadataGenerator
@@ -223,6 +224,12 @@ class MetadataBackfiller:
         output_stem = self._resolve_output_stem(
             playlist_directory, canonical_stem, video_id
         )
+        if scope == "full":
+            output_stem = self._reconcile_existing_stem(
+                playlist_directory=playlist_directory,
+                source_stem=output_stem,
+                target_stem=canonical_stem,
+            )
 
         write_info_json = self._resolve_bool_setting(
             playlist_config, "write_info_json", "writeinfojson", default=True
@@ -239,9 +246,7 @@ class MetadataBackfiller:
         needs_info_json = bool(
             write_info_json and (refresh_existing or not info_json_path.exists())
         )
-        needs_nfo = bool(
-            scope == "full" and generate_nfo and (refresh_existing or not nfo_path.exists())
-        )
+        needs_nfo = bool(scope == "full" and generate_nfo)
         needs_metadata_json = bool(
             scope == "full"
             and write_max_metadata
@@ -279,6 +284,50 @@ class MetadataBackfiller:
             )
 
         return "updated"
+
+    def _reconcile_existing_stem(
+        self,
+        *,
+        playlist_directory: Path,
+        source_stem: str,
+        target_stem: str,
+    ) -> str:
+        if not source_stem or not target_stem:
+            return source_stem
+        if source_stem == target_stem:
+            return source_stem
+        if stem_looks_like_fallback(target_stem) and not stem_looks_like_fallback(source_stem):
+            return source_stem
+        if stem_looks_like_fallback(source_stem) and stem_looks_like_fallback(target_stem):
+            return source_stem
+
+        rename_result = rename_stem_artifacts(
+            playlist_directory, source_stem, target_stem
+        )
+        if rename_result.status == "renamed":
+            return target_stem
+
+        if rename_result.status == "conflict":
+            self._emit(
+                "warning",
+                (
+                    "Rename skipped: target stem already exists "
+                    f"({source_stem} -> {target_stem})"
+                ),
+            )
+            return source_stem
+
+        if rename_result.status == "failed":
+            self._emit(
+                "warning",
+                (
+                    "Rename failed: could not reconcile artifact stem "
+                    f"({source_stem} -> {target_stem})"
+                ),
+            )
+            return source_stem
+
+        return source_stem
 
     def _resolve_bool_setting(
         self,

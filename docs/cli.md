@@ -67,6 +67,8 @@ Options:
 
 Behavior notes:
 - In `full` scope, backfill refreshes enriched per-video `.nfo` and project-owned `<stem>.metadata.json` sidecars (respecting config gates), in addition to `.info.json`.
+- In `full` scope, backfill also repairs legacy fallback stems (for example `video-<id>_unknown-channel`) to canonical config-derived stems.
+- If a canonical target stem already exists, backfill skips the rename and emits a warning (no overwrite).
 
 ## `search`
 ```bash
