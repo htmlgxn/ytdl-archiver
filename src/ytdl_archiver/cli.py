@@ -48,7 +48,7 @@ except ImportError:
     "--verbose",
     "-v",
     is_flag=True,
-    help="Enable verbose logging with full yt-dlp output",
+    help="Enable structured verbose diagnostics (no raw yt-dlp passthrough)",
 )
 @click.option(
     "--quiet",

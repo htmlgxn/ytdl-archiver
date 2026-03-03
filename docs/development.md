@@ -24,12 +24,29 @@ When changing behavior, update docs in the same change:
 - `docs/configuration.md` for config semantics and defaults
 - `MIGRATION.md` only for legacy-delta migration notes
 
+Source-of-truth matrix:
+- CLI behavior/options: `src/ytdl_archiver/cli.py`
+- Defaults and config semantics: `src/ytdl_archiver/config/defaults.toml`, `src/ytdl_archiver/config/settings.py`
+- Output behavior: `src/ytdl_archiver/output.py`, `src/ytdl_archiver/core/downloader.py`
+- NFO/metadata behavior: `src/ytdl_archiver/core/metadata.py`, `src/ytdl_archiver/core/metadata_backfill.py`
+
 Validation checks:
 ```bash
 UV_CACHE_DIR=.uv-cache uv run ytdl-archiver --help
 UV_CACHE_DIR=.uv-cache uv run ytdl-archiver archive --help
+UV_CACHE_DIR=.uv-cache uv run ytdl-archiver metadata-backfill --help
+UV_CACHE_DIR=.uv-cache uv run ytdl-archiver search --help
+UV_CACHE_DIR=.uv-cache uv run ytdl-archiver convert-playlists --help
 UV_CACHE_DIR=.uv-cache uv run ytdl-archiver init --help
 ```
+
+## v0.3.0 release-doc checklist
+- Confirm `README.md`, `docs/cli.md`, `docs/configuration.md`, and `docs/terminal-output.md` match current behavior.
+- Confirm command coverage includes `archive`, `metadata-backfill`, `search`, `convert-playlists`, and `init`.
+- Confirm `docs/configuration.md` default block matches `src/ytdl_archiver/config/defaults.toml` values/sections.
+- Confirm output contract docs reflect formatter behavior (default/quiet/verbose).
+- Confirm migration/release notes are updated for `0.2.x -> 0.3.0`.
+- Run help/parity commands above before tagging.
 
 ## Setup wizard (`ratatui`) development
 Build and stage the setup wizard binary:

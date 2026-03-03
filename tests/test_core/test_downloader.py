@@ -40,10 +40,15 @@ class TestYouTubeDownloader:
         postprocessor_keys = [pp["key"] for pp in opts["postprocessors"]]
         assert "FFmpegSubtitlesConvertor" in postprocessor_keys
         assert "FFmpegEmbedSubtitle" in postprocessor_keys
+        assert "FFmpegVideoRemuxer" in postprocessor_keys
         embed_pp = next(
             pp for pp in opts["postprocessors"] if pp["key"] == "FFmpegEmbedSubtitle"
         )
         assert embed_pp["already_have_subtitle"] is True
+        remux_pp = next(
+            pp for pp in opts["postprocessors"] if pp["key"] == "FFmpegVideoRemuxer"
+        )
+        assert remux_pp["preferedformat"] == "mp4/mkv"
         assert opts["writethumbnail"] == config.get("download.write_thumbnail")
 
     def test_build_ydl_options_with_playlist_config(self, config):
@@ -96,6 +101,52 @@ class TestYouTubeDownloader:
         postprocessor_keys = [pp["key"] for pp in opts["postprocessors"]]
         assert "FFmpegSubtitlesConvertor" in postprocessor_keys
         assert "FFmpegEmbedSubtitle" not in postprocessor_keys
+
+    def test_resolve_strategy_prefers_mp4_when_available_at_max_resolution(self, config):
+        """Test same-resolution candidates pick mp4 path before bitrate/fps tie-breaks."""
+        downloader = YouTubeDownloader(config)
+        metadata = {
+            "formats": [
+                {"height": 2160, "ext": "webm", "vcodec": "vp9", "fps": 60, "tbr": 15000},
+                {"height": 2160, "ext": "mp4", "vcodec": "avc1", "fps": 30, "tbr": 9000},
+            ]
+        }
+
+        overrides = downloader._resolve_download_strategy_overrides(metadata, {})
+
+        assert "height=2160" in overrides["format"]
+        assert "[ext=mp4]" in overrides["format"]
+        assert overrides["remux_video"] == "mp4/mkv"
+
+    def test_resolve_strategy_preserves_max_resolution_when_mp4_not_available(
+        self, config
+    ):
+        """Test max resolution path stays selected when only lower-res mp4 exists."""
+        downloader = YouTubeDownloader(config)
+        metadata = {
+            "formats": [
+                {"height": 2160, "ext": "webm", "vcodec": "vp9", "fps": 60, "tbr": 15000},
+                {"height": 1080, "ext": "mp4", "vcodec": "avc1", "fps": 30, "tbr": 5000},
+            ]
+        }
+
+        overrides = downloader._resolve_download_strategy_overrides(metadata, {})
+
+        assert "height=2160" in overrides["format"]
+        assert "[ext=mp4]" not in overrides["format"]
+        assert overrides["remux_video"] == "mp4/mkv"
+
+    def test_force_mp4_policy_uses_mp4_selector_and_remux(self, config):
+        """Test force_mp4 policy enforces mp4 selector/remux behavior."""
+        downloader = YouTubeDownloader(config)
+        metadata = {"formats": [{"height": 2160, "ext": "webm", "vcodec": "vp9"}]}
+
+        overrides = downloader._resolve_download_strategy_overrides(
+            metadata, {"container_policy": "force_mp4"}
+        )
+
+        assert "[ext=mp4]" in overrides["format"]
+        assert overrides["remux_video"] == "mp4"
 
     @patch("ytdl_archiver.core.downloader.yt_dlp.YoutubeDL")
     def test_extract_metadata_success(self, mock_ydl, config, mock_video_info):
