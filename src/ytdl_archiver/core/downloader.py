@@ -574,25 +574,23 @@ class YouTubeDownloader:
     def get_metadata(self, video_url: str) -> dict[str, Any] | None:
         """Get video metadata without downloading."""
         opts = self._build_runtime_ydl_options(include_progress_hooks=False)
+        
+        # Use ignoreerrors=False to see actual yt-dlp errors
+        opts["ignoreerrors"] = False
 
         verbose = self.config.get("logging.level") == "DEBUG"
 
         print(f"DEBUG get_metadata: {video_url}", file=sys.stderr, flush=True)
-        print(f"DEBUG opts keys: {list(opts.keys())}", file=sys.stderr, flush=True)
         print(f"DEBUG cookiefile: {opts.get('cookiefile')}", file=sys.stderr, flush=True)
-        print(f"DEBUG user_agent: {opts.get('user_agent')}", file=sys.stderr, flush=True)
-        print(f"DEBUG http_headers: {opts.get('http_headers')}", file=sys.stderr, flush=True)
 
         try:
             if verbose:
                 logger.debug("Fetching metadata", extra={"video_url": video_url})
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info_dict = ydl.extract_info(video_url, download=False)
-                if verbose and info_dict:
-                    logger.debug(
-                        "Metadata fetched",
-                        extra={"title": info_dict.get("title")},
-                    )
+                if info_dict is None:
+                    print(f"DEBUG: yt-dlp returned None", file=sys.stderr, flush=True)
+                    return None
                 print(f"DEBUG SUCCESS: {info_dict.get('title', 'unknown')}", file=sys.stderr, flush=True)
                 return info_dict
         except Exception as e:
