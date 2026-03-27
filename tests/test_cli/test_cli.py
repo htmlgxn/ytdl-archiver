@@ -260,10 +260,12 @@ base_directory = "{temp_dir}/downloads"
             mock_config.migrate_playlists_from_cwd.return_value = None
             mock_config_class.return_value = mock_config
             mock_run_dedupe.return_value = {
-                "duplicate_sets": 1,
-                "losers_disposed": 1,
+                "processed_sets": 1,
+                "imported_sets": 0,
+                "replaced_sets": 1,
+                "merged_sets": 0,
                 "sidecars_copied": 0,
-                "winners_renamed": 1,
+                "archive_winners_renamed": 1,
                 "details": [],
             }
 
@@ -309,10 +311,12 @@ base_directory = "{temp_dir}/downloads"
             mock_config.get_archive_directory.return_value = archive_dir
             mock_config_class.return_value = mock_config
             mock_run_dedupe.return_value = {
-                "duplicate_sets": 0,
-                "losers_disposed": 0,
+                "processed_sets": 0,
+                "imported_sets": 0,
+                "replaced_sets": 0,
+                "merged_sets": 0,
                 "sidecars_copied": 0,
-                "winners_renamed": 0,
+                "archive_winners_renamed": 0,
                 "details": [],
             }
 
@@ -392,7 +396,7 @@ base_directory = "{temp_dir}/downloads"
             )
 
             assert result.exit_code == 2
-            assert "must resolve to different directories" in result.output
+            assert "SOURCE_DIR and ARCHIVE_DIR must resolve to different directories" in result.output
 
     @patch("ytdl_archiver.cli.BrowserCookieRefresher")
     @patch("ytdl_archiver.cli.PlaylistArchiver")

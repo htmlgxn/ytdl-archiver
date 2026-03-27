@@ -376,9 +376,9 @@ def metadata_backfill(
 
 
 @cli.command(name="dedupe")
-@click.argument("dir1", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.argument("source_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
 @click.argument(
-    "dir2",
+    "archive_dir",
     required=False,
     type=click.Path(exists=True, file_okay=False, path_type=Path),
 )
@@ -389,14 +389,14 @@ def metadata_backfill(
 @click.pass_context
 def dedupe_cmd(
     ctx: click.Context,
-    dir1: Path,
-    dir2: Path | None,
+    source_dir: Path,
+    archive_dir: Path | None,
     trash_dir: Path | None,
     delete: bool,
     dry_run: bool,
     verbose: bool,
 ) -> None:
-    """Deduplicate archived videos across two archive directories."""
+    """Merge videos from SOURCE_DIR into ARCHIVE_DIR."""
     if bool(trash_dir) == bool(delete):
         raise click.UsageError("Specify exactly one of --trash-dir or --delete.")
 
@@ -408,20 +408,21 @@ def dedupe_cmd(
 
         formatter = get_formatter(use_colors, show_progress=False, mode=output_mode)
 
-        effective_dir1 = dir1.expanduser().resolve()
+        effective_dir1 = source_dir.expanduser().resolve()
         effective_dir2 = (
-            dir2.expanduser().resolve()
-            if dir2 is not None
+            archive_dir.expanduser().resolve()
+            if archive_dir is not None
             else config.get_archive_directory().resolve()
         )
         if effective_dir1 == effective_dir2:
-            raise click.UsageError("DIR1 and DIR2 must resolve to different directories.")
+            raise click.UsageError(
+                "SOURCE_DIR and ARCHIVE_DIR must resolve to different directories."
+            )
 
         emit_rendered(formatter.logo_header())
         emit_rendered(formatter.header(__version__))
-        emit_rendered(
-            formatter.archive_directory(f"{effective_dir1} <-> {effective_dir2}")
-        )
+        emit_rendered(formatter.archive_directory(str(effective_dir2)))
+        emit_rendered(f"Source directory: {effective_dir1}")
 
         summary = run_dedupe(
             effective_dir1,
@@ -438,22 +439,26 @@ def dedupe_cmd(
 
         for detail in summary["details"]:
             emit_rendered(
-                f"{detail['match_method']}: keep {detail['winner']} "
-                f"drop {', '.join(detail['losers'])}"
+                f"{detail['action']}: {detail['match_method']}={detail['match_key']} "
+                f"-> {detail['archive_destination']}"
             )
             for copied_path in detail["copied"]:
                 emit_rendered(f"  copy sidecar -> {copied_path}")
+            if detail["archive_replaced"]:
+                emit_rendered(f"  replace archive from {detail['source_origin']}")
             if detail["renamed_to"]:
-                emit_rendered(f"  rename winner -> {detail['renamed_to']}")
+                emit_rendered(f"  rename archive -> {detail['renamed_to']}")
             if detail["rename_blocked"]:
-                emit_rendered("  rename blocked by existing canonical target; losers preserved")
+                emit_rendered("  rename blocked by existing canonical target")
 
         emit_rendered(
             "Dedupe complete. "
-            f"Sets: {summary['duplicate_sets']}, "
-            f"losers disposed: {summary['losers_disposed']}, "
+            f"processed: {summary['processed_sets']}, "
+            f"imported: {summary['imported_sets']}, "
+            f"replaced: {summary['replaced_sets']}, "
+            f"merged: {summary['merged_sets']}, "
             f"sidecars copied: {summary['sidecars_copied']}, "
-            f"winners renamed: {summary['winners_renamed']}"
+            f"archive renames: {summary['archive_winners_renamed']}"
         )
 
     except KeyboardInterrupt:

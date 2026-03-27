@@ -1,15 +1,11 @@
-"""Tests for archive dedupe workflow."""
+"""Tests for directional archive dedupe workflow."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from ytdl_archiver.core.dedupe import (
-    find_duplicate_sets,
-    run_dedupe,
-    scan_directory,
-)
+from ytdl_archiver.core.dedupe import run_dedupe, scan_directory
 
 
 def _write_bytes(path: Path, size: int) -> None:
@@ -17,7 +13,13 @@ def _write_bytes(path: Path, size: int) -> None:
     path.write_bytes(b"x" * size)
 
 
-def _write_info_json(path: Path, *, video_id: str, title: str = "Video", uploader: str = "Channel") -> None:
+def _write_info_json(
+    path: Path,
+    *,
+    video_id: str,
+    title: str = "Video",
+    uploader: str = "Channel",
+) -> None:
     path.write_text(
         json.dumps(
             {
@@ -56,99 +58,40 @@ def _write_metadata_json(
 
 
 class TestDedupe:
-    def test_find_duplicate_sets_groups_n_way_video_id_matches(self, temp_dir: Path):
-        dir_a = temp_dir / "a"
-        dir_b = temp_dir / "b"
-        dir_a.mkdir()
-        dir_b.mkdir()
+    def test_scan_directory_recurses_into_nested_playlist_folders(self, temp_dir: Path):
+        root = temp_dir / "source"
+        nested = root / "Channel Name" / "Uploads"
+        nested.mkdir(parents=True)
+        _write_bytes(nested / "video.mp4", 4)
+        _write_info_json(nested / "video.info.json", video_id="abc123")
 
-        _write_bytes(dir_a / "legacy-one.mp4", 10)
-        _write_info_json(dir_a / "legacy-one.info.json", video_id="abc123")
-        _write_bytes(dir_b / "legacy-two.mp4", 8)
-        _write_metadata_json(dir_b / "legacy-two.metadata.json", video_id="abc123")
-        _write_bytes(dir_b / "legacy-three.mp4", 6)
-        _write_info_json(dir_b / "legacy-three.info.json", video_id="abc123")
+        groups = scan_directory(root)
 
-        duplicate_sets = find_duplicate_sets(scan_directory(dir_a), scan_directory(dir_b))
+        assert len(groups) == 1
+        assert groups[0].relative_parent == Path("Channel Name") / "Uploads"
+        assert groups[0].video_id == "abc123"
 
-        assert len(duplicate_sets) == 1
-        duplicate_set = duplicate_sets[0]
-        assert duplicate_set.match_method == "video_id"
-        assert duplicate_set.match_key == "abc123"
-        assert sorted(group.stem for group in duplicate_set.groups) == [
-            "legacy-one",
-            "legacy-three",
-            "legacy-two",
-        ]
-
-    def test_run_dedupe_copies_sidecars_renames_winner_and_trashes_losers(
+    def test_run_dedupe_imports_source_only_video_into_archive_relative_parent(
         self, config, temp_dir: Path
     ):
-        dir_a = temp_dir / "left"
-        dir_b = temp_dir / "right"
-        trash_dir = temp_dir / "trash"
-        dir_a.mkdir()
-        dir_b.mkdir()
+        source_dir = temp_dir / "source"
+        archive_dir = temp_dir / "archive"
+        source_leaf = source_dir / "Imports" / "Channel A"
+        archive_dir.mkdir()
         config._config["filename"]["tokens"] = ["title", "channel"]
 
-        _write_bytes(dir_a / "legacy-low.mp4", 4)
-        _write_info_json(dir_a / "legacy-low.info.json", video_id="abc123")
-        (dir_a / "legacy-low.en.srt").write_text("subtitle", encoding="utf-8")
-
-        _write_bytes(dir_b / "legacy-high.mp4", 12)
-        _write_metadata_json(
-            dir_b / "legacy-high.metadata.json",
+        _write_bytes(source_leaf / "legacy.mp4", 8)
+        _write_info_json(
+            source_leaf / "legacy.info.json",
             video_id="abc123",
-            title="Canonical Video",
-            uploader="Archive Channel",
+            title="Imported Video",
+            uploader="Source Channel",
         )
+        (source_leaf / "legacy.en.srt").write_text("subtitle", encoding="utf-8")
 
         summary = run_dedupe(
-            dir_a,
-            dir_b,
-            trash_dir=trash_dir,
-            delete=False,
-            dry_run=False,
-            verbose=True,
-            config=config,
-        )
-
-        canonical_stem = "canonical-video_archive-channel"
-        assert summary["duplicate_sets"] == 1
-        assert summary["sidecars_copied"] == 2
-        assert summary["winners_renamed"] == 1
-        assert summary["losers_disposed"] == 1
-        assert (dir_b / f"{canonical_stem}.mp4").exists()
-        assert (dir_b / f"{canonical_stem}.metadata.json").exists()
-        assert (dir_b / f"{canonical_stem}.info.json").exists()
-        assert (dir_b / f"{canonical_stem}.en.srt").exists()
-        assert not (dir_a / "legacy-low.mp4").exists()
-        assert (trash_dir / "legacy-low.mp4").exists()
-
-    def test_run_dedupe_preserves_loser_when_canonical_rename_conflicts(
-        self, config, temp_dir: Path
-    ):
-        dir_a = temp_dir / "left"
-        dir_b = temp_dir / "right"
-        dir_a.mkdir()
-        dir_b.mkdir()
-        config._config["filename"]["tokens"] = ["title", "channel"]
-
-        _write_bytes(dir_a / "legacy-low.mp4", 4)
-        _write_info_json(dir_a / "legacy-low.info.json", video_id="abc123")
-
-        _write_bytes(dir_b / "legacy-high.mp4", 12)
-        _write_metadata_json(
-            dir_b / "legacy-high.metadata.json",
-            video_id="abc123",
-            title="Canonical Video",
-            uploader="Archive Channel",
-        )
-        _write_bytes(dir_b / "canonical-video_archive-channel.mp4", 1)
-
-        summary = run_dedupe(
-            dir_a,
-            dir_b,
+            source_dir,
+            archive_dir,
             trash_dir=None,
             delete=True,
             dry_run=False,
@@ -156,25 +99,93 @@ class TestDedupe:
             config=config,
         )
 
-        assert summary["rename_blocked_sets"] == 1
-        assert summary["losers_disposed"] == 0
-        assert (dir_a / "legacy-low.mp4").exists()
-        assert (dir_b / "legacy-high.mp4").exists()
+        final_stem = "imported-video_source-channel"
+        assert summary["processed_sets"] == 1
+        assert summary["imported_sets"] == 1
+        assert (archive_dir / "Imports" / "Channel A" / f"{final_stem}.mp4").exists()
+        assert (archive_dir / "Imports" / "Channel A" / f"{final_stem}.info.json").exists()
+        assert (archive_dir / "Imports" / "Channel A" / f"{final_stem}.en.srt").exists()
+        assert not (source_leaf / "legacy.mp4").exists()
 
-    def test_run_dedupe_uses_filename_fallback_when_sidecars_are_missing(
+    def test_run_dedupe_replaces_archive_media_but_keeps_archive_subdirectory(
         self, config, temp_dir: Path
     ):
-        dir_a = temp_dir / "left"
-        dir_b = temp_dir / "right"
-        dir_a.mkdir()
-        dir_b.mkdir()
+        source_dir = temp_dir / "source"
+        archive_dir = temp_dir / "archive"
+        source_leaf = source_dir / "Loose" / "Folder"
+        archive_leaf = archive_dir / "Playlists" / "Target"
+        config._config["filename"]["tokens"] = ["title", "channel"]
 
-        _write_bytes(dir_a / "2025-01-31_Same Title_Channel.mp4", 3)
-        _write_bytes(dir_b / "same-title-channel.mp4", 8)
+        _write_bytes(source_leaf / "source-copy.mp4", 2000)
+        _write_info_json(
+            source_leaf / "source-copy.info.json",
+            video_id="abc123",
+            title="Canonical Video",
+            uploader="Archive Channel",
+        )
+        (source_leaf / "source-copy.en.srt").write_text("subtitle", encoding="utf-8")
+
+        _write_bytes(archive_leaf / "old-archive.mp4", 5)
+        _write_metadata_json(
+            archive_leaf / "old-archive.metadata.json",
+            video_id="abc123",
+            title="Canonical Video",
+            uploader="Archive Channel",
+        )
+        (archive_leaf / "old-archive.nfo").write_text(
+            "<movie><uniqueid type=\"youtube\">abc123</uniqueid></movie>",
+            encoding="utf-8",
+        )
 
         summary = run_dedupe(
-            dir_a,
-            dir_b,
+            source_dir,
+            archive_dir,
+            trash_dir=None,
+            delete=True,
+            dry_run=False,
+            verbose=True,
+            config=config,
+        )
+
+        final_stem = "canonical-video_archive-channel"
+        assert summary["replaced_sets"] == 1
+        assert summary["archive_groups_disposed"] == 1
+        assert (archive_leaf / f"{final_stem}.mp4").exists()
+        assert (archive_leaf / f"{final_stem}.info.json").exists()
+        assert (archive_leaf / f"{final_stem}.en.srt").exists()
+        assert (archive_leaf / f"{final_stem}.nfo").exists()
+        assert not (source_leaf / "source-copy.mp4").exists()
+        assert not (archive_leaf / "old-archive.mp4").exists()
+
+    def test_run_dedupe_keeps_archive_media_when_archive_copy_is_best(
+        self, config, temp_dir: Path
+    ):
+        source_dir = temp_dir / "source"
+        archive_dir = temp_dir / "archive"
+        source_leaf = source_dir / "Incoming" / "Channel"
+        archive_leaf = archive_dir / "Playlists" / "Named"
+        config._config["filename"]["tokens"] = ["title", "channel"]
+
+        _write_bytes(source_leaf / "source-copy.mp4", 5)
+        _write_info_json(
+            source_leaf / "source-copy.info.json",
+            video_id="abc123",
+            title="Canonical Video",
+            uploader="Archive Channel",
+        )
+        (source_leaf / "source-copy.en.srt").write_text("subtitle", encoding="utf-8")
+
+        _write_bytes(archive_leaf / "archived.mp4", 15)
+        _write_metadata_json(
+            archive_leaf / "archived.metadata.json",
+            video_id="abc123",
+            title="Canonical Video",
+            uploader="Archive Channel",
+        )
+
+        summary = run_dedupe(
+            source_dir,
+            archive_dir,
             trash_dir=None,
             delete=True,
             dry_run=False,
@@ -182,28 +193,75 @@ class TestDedupe:
             config=config,
         )
 
-        assert summary["duplicate_sets"] == 1
-        assert summary["losers_disposed"] == 1
-        assert not (dir_a / "2025-01-31_Same Title_Channel.mp4").exists()
-        assert (dir_b / "same-title-channel.mp4").exists()
+        final_stem = "canonical-video_archive-channel"
+        assert summary["merged_sets"] == 1
+        assert (archive_leaf / f"{final_stem}.mp4").exists()
+        assert (archive_leaf / f"{final_stem}.metadata.json").exists()
+        assert (archive_leaf / f"{final_stem}.info.json").exists()
+        assert (archive_leaf / f"{final_stem}.en.srt").exists()
+        assert not (source_leaf / "source-copy.mp4").exists()
 
-    def test_run_dedupe_renames_trash_collision_targets(self, config, temp_dir: Path):
-        dir_a = temp_dir / "left"
-        dir_b = temp_dir / "right"
+    def test_run_dedupe_uses_filename_fallback_recursively(self, config, temp_dir: Path):
+        source_dir = temp_dir / "source"
+        archive_dir = temp_dir / "archive"
+        source_leaf = source_dir / "Imports" / "Folder"
+        archive_leaf = archive_dir / "Playlists" / "Named"
+
+        _write_bytes(source_leaf / "2025-01-31_Same Title_Channel.mp4", 4)
+        _write_bytes(archive_leaf / "same-title-channel.mp4", 7)
+
+        summary = run_dedupe(
+            source_dir,
+            archive_dir,
+            trash_dir=None,
+            delete=True,
+            dry_run=False,
+            verbose=False,
+            config=config,
+        )
+
+        assert summary["processed_sets"] == 1
+        assert summary["merged_sets"] == 1
+        assert (archive_leaf / "same-title-channel.mp4").exists()
+        assert not (source_leaf / "2025-01-31_Same Title_Channel.mp4").exists()
+
+    def test_run_dedupe_trashes_source_and_extra_archive_with_relative_paths(
+        self, config, temp_dir: Path
+    ):
+        source_dir = temp_dir / "source"
+        archive_dir = temp_dir / "archive"
         trash_dir = temp_dir / "trash"
-        dir_a.mkdir()
-        dir_b.mkdir()
-        trash_dir.mkdir()
-        (trash_dir / "legacy-low.mp4").write_bytes(b"old")
+        source_leaf = source_dir / "Incoming" / "Channel"
+        archive_primary = archive_dir / "Playlists" / "Primary"
+        archive_extra = archive_dir / "Playlists" / "Duplicate"
+        config._config["filename"]["tokens"] = ["title", "channel"]
 
-        _write_bytes(dir_a / "legacy-low.mp4", 4)
-        _write_info_json(dir_a / "legacy-low.info.json", video_id="abc123")
-        _write_bytes(dir_b / "legacy-high.mp4", 12)
-        _write_info_json(dir_b / "legacy-high.info.json", video_id="abc123")
+        _write_bytes(source_leaf / "source-copy.mp4", 5)
+        _write_info_json(
+            source_leaf / "source-copy.info.json",
+            video_id="abc123",
+            title="Canonical Video",
+            uploader="Archive Channel",
+        )
 
-        run_dedupe(
-            dir_a,
-            dir_b,
+        _write_bytes(archive_primary / "archived.mp4", 15)
+        _write_metadata_json(
+            archive_primary / "archived.metadata.json",
+            video_id="abc123",
+            title="Canonical Video",
+            uploader="Archive Channel",
+        )
+        _write_bytes(archive_extra / "duplicate.mp4", 3)
+        _write_info_json(
+            archive_extra / "duplicate.info.json",
+            video_id="abc123",
+            title="Canonical Video",
+            uploader="Archive Channel",
+        )
+
+        summary = run_dedupe(
+            source_dir,
+            archive_dir,
             trash_dir=trash_dir,
             delete=False,
             dry_run=False,
@@ -211,5 +269,7 @@ class TestDedupe:
             config=config,
         )
 
-        assert (trash_dir / "legacy-low.mp4").exists()
-        assert (trash_dir / "legacy-low.mp4.dedupe-1").exists()
+        assert summary["source_groups_disposed"] == 1
+        assert summary["archive_groups_disposed"] == 1
+        assert (trash_dir / "source" / "Incoming" / "Channel" / "source-copy.mp4").exists()
+        assert (trash_dir / "archive" / "Playlists" / "Duplicate" / "duplicate.mp4").exists()
