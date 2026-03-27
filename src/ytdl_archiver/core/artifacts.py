@@ -43,17 +43,24 @@ def collect_artifacts_for_stem(directory: Path, stem: str) -> list[Path]:
 
 
 def rename_stem_artifacts(
-    directory: Path, source_stem: str, target_stem: str
+    directory: Path,
+    source_stem: str,
+    target_stem: str,
+    *,
+    target_directory: Path | None = None,
 ) -> StemRenameResult:
     """Rename all stem-associated files within a directory.
 
     Uses a two-phase temp rename to avoid partial collisions.
+    When *target_directory* is given, artifacts are moved there instead of
+    staying in *directory*.
     """
     source = source_stem.strip()
     target = target_stem.strip()
+    dest_dir = target_directory or directory
     if not source or not target:
         return StemRenameResult("invalid", source, target, 0)
-    if source == target:
+    if source == target and dest_dir == directory:
         return StemRenameResult("noop", source, target, 0)
 
     artifacts = collect_artifacts_for_stem(directory, source)
@@ -63,7 +70,7 @@ def rename_stem_artifacts(
     targets: list[Path] = []
     for artifact in artifacts:
         suffix_part = artifact.name[len(source) :]
-        target_path = directory / f"{target}{suffix_part}"
+        target_path = dest_dir / f"{target}{suffix_part}"
         if target_path.exists():
             return StemRenameResult(
                 "conflict",

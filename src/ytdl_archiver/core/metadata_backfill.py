@@ -15,6 +15,7 @@ from .artifacts import rename_stem_artifacts, stem_looks_like_fallback
 from .archive import ArchiveTracker
 from .downloader import YouTubeDownloader
 from .metadata import MetadataGenerator
+from .sidecars import resolve_output_base_path, write_max_metadata_sidecar
 from .utils import build_output_filename
 
 try:
@@ -301,13 +302,14 @@ class MetadataBackfiller:
             self.metadata_generator.create_nfo_file(extracted_result, nfo_path)
 
         if needs_metadata_json:
-            base_path = self.downloader._resolve_output_base_path(
+            base_path = resolve_output_base_path(
                 playlist_directory, output_stem, extracted_result
             )
-            self.downloader._write_max_metadata_sidecar(
+            write_max_metadata_sidecar(
                 base_path=base_path,
                 video_url=video_url,
                 download_result=extracted_result,
+                formatter=self.formatter,
             )
 
         return "updated"

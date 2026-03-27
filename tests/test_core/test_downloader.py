@@ -42,15 +42,12 @@ class TestYouTubeDownloader:
         postprocessor_keys = [pp["key"] for pp in opts["postprocessors"]]
         assert "FFmpegSubtitlesConvertor" in postprocessor_keys
         assert "FFmpegEmbedSubtitle" in postprocessor_keys
-        assert "FFmpegVideoRemuxer" in postprocessor_keys
+        # prefer_mp4 no longer adds a remuxer — format_sort handles container preference
+        assert "FFmpegVideoRemuxer" not in postprocessor_keys
         embed_pp = next(
             pp for pp in opts["postprocessors"] if pp["key"] == "FFmpegEmbedSubtitle"
         )
         assert embed_pp["already_have_subtitle"] is True
-        remux_pp = next(
-            pp for pp in opts["postprocessors"] if pp["key"] == "FFmpegVideoRemuxer"
-        )
-        assert remux_pp["preferedformat"] == "mp4/mkv"
         assert opts["writethumbnail"] == config.get("download.write_thumbnail")
 
     def test_build_ydl_options_with_playlist_config(self, config):
@@ -104,50 +101,38 @@ class TestYouTubeDownloader:
         assert "FFmpegSubtitlesConvertor" in postprocessor_keys
         assert "FFmpegEmbedSubtitle" not in postprocessor_keys
 
-    def test_resolve_strategy_prefers_mp4_when_available_at_max_resolution(self, config):
-        """Test same-resolution candidates pick mp4 path before bitrate/fps tie-breaks."""
+    def test_resolve_strategy_prefer_mp4_uses_format_sort(self, config):
+        """Test prefer_mp4 policy uses format_sort for mp4 preference."""
         downloader = YouTubeDownloader(config)
-        metadata = {
-            "formats": [
-                {"height": 2160, "ext": "webm", "vcodec": "vp9", "fps": 60, "tbr": 15000},
-                {"height": 2160, "ext": "mp4", "vcodec": "avc1", "fps": 30, "tbr": 9000},
-            ]
-        }
 
-        overrides = downloader._resolve_download_strategy_overrides(metadata, {})
+        overrides = downloader._resolve_download_strategy_overrides({})
 
-        assert "height=2160" in overrides["format"]
-        assert "[ext=mp4]" in overrides["format"]
-        assert overrides["remux_video"] == "mp4/mkv"
+        assert overrides["format"] == "bestvideo*+bestaudio/best"
+        assert "ext:mp4:m4a:mov" in overrides["format_sort"]
+        assert "remux_video" not in overrides
 
-    def test_resolve_strategy_preserves_max_resolution_when_mp4_not_available(
-        self, config
-    ):
-        """Test max resolution path stays selected when only lower-res mp4 exists."""
+    def test_resolve_strategy_prefer_source_uses_default_sorting(self, config):
+        """Test prefer_source policy uses best quality with default sorting."""
         downloader = YouTubeDownloader(config)
-        metadata = {
-            "formats": [
-                {"height": 2160, "ext": "webm", "vcodec": "vp9", "fps": 60, "tbr": 15000},
-                {"height": 1080, "ext": "mp4", "vcodec": "avc1", "fps": 30, "tbr": 5000},
-            ]
-        }
-
-        overrides = downloader._resolve_download_strategy_overrides(metadata, {})
-
-        assert "height=2160" in overrides["format"]
-        assert "[ext=mp4]" not in overrides["format"]
-        assert overrides["remux_video"] == "mp4/mkv"
-
-    def test_force_mp4_policy_uses_mp4_selector_and_remux(self, config):
-        """Test force_mp4 policy enforces mp4 selector/remux behavior."""
-        downloader = YouTubeDownloader(config)
-        metadata = {"formats": [{"height": 2160, "ext": "webm", "vcodec": "vp9"}]}
 
         overrides = downloader._resolve_download_strategy_overrides(
-            metadata, {"container_policy": "force_mp4"}
+            {"container_policy": "prefer_source"}
         )
 
-        assert "[ext=mp4]" in overrides["format"]
+        assert overrides["format"] == "bestvideo*+bestaudio/best"
+        assert "format_sort" not in overrides
+        assert "remux_video" not in overrides
+
+    def test_force_mp4_policy_uses_format_sort_and_remux(self, config):
+        """Test force_mp4 policy uses format_sort and remux_video."""
+        downloader = YouTubeDownloader(config)
+
+        overrides = downloader._resolve_download_strategy_overrides(
+            {"container_policy": "force_mp4"}
+        )
+
+        assert overrides["format"] == "bestvideo*+bestaudio/best"
+        assert "ext:mp4:m4a:mov" in overrides["format_sort"]
         assert overrides["remux_video"] == "mp4"
 
     @patch("ytdl_archiver.core.downloader.yt_dlp.YoutubeDL")
@@ -313,14 +298,13 @@ class TestYouTubeDownloader:
         config._config["archive"]["delay_between_videos"] = 0
         downloader = YouTubeDownloader(config)
 
-        mocker.patch.object(downloader, "get_metadata", return_value=None)
         direct_download = mocker.patch.object(
             downloader,
             "_download_with_effective_config",
             return_value={"id": "test_video"},
         )
-        mocker.patch.object(downloader, "_emit_post_download_generated_lines")
-        mocker.patch.object(downloader, "_write_max_metadata_sidecar")
+        mocker.patch("ytdl_archiver.core.downloader.emit_post_download_generated_lines")
+        mocker.patch("ytdl_archiver.core.downloader.write_max_metadata_sidecar")
 
         result = downloader.download_video_with_config(
             "https://www.youtube.com/watch?v=test_video",
@@ -332,8 +316,8 @@ class TestYouTubeDownloader:
         assert direct_download.call_count == 1
 
         _, output_template, _, filename, _ = direct_download.call_args.args
-        assert "video-test_video_unknown-channel" in output_template
-        assert filename == "video-test_video_unknown-channel"
+        assert "video-test_video" in output_template
+        assert filename == "video-test_video"
 
     def test_download_video_with_config_reconciles_fallback_stem_after_download(
         self, config, temp_dir, mocker
@@ -342,7 +326,7 @@ class TestYouTubeDownloader:
         config._config["archive"]["delay_between_videos"] = 0
         downloader = YouTubeDownloader(config)
         video_url = "https://www.youtube.com/watch?v=test_video"
-        fallback_stem = "video-test_video_unknown-channel"
+        fallback_stem = "video-test_video"
         canonical_result = {
             "id": "test_video",
             "title": "Test Video",
@@ -360,14 +344,13 @@ class TestYouTubeDownloader:
         (temp_dir / f"{fallback_stem}.jpg").write_bytes(b"jpg")
         (temp_dir / f"{fallback_stem}.en.srt").write_text("1\n", encoding="utf-8")
 
-        mocker.patch.object(downloader, "get_metadata", return_value=None)
         mocker.patch.object(
             downloader,
             "_download_with_effective_config",
             return_value=canonical_result,
         )
-        mocker.patch.object(downloader, "_write_max_metadata_sidecar")
-        mocker.patch.object(downloader, "_emit_post_download_generated_lines")
+        mocker.patch("ytdl_archiver.core.downloader.write_max_metadata_sidecar")
+        mocker.patch("ytdl_archiver.core.downloader.emit_post_download_generated_lines")
 
         downloader.download_video_with_config(video_url, temp_dir, None)
 
@@ -383,7 +366,7 @@ class TestYouTubeDownloader:
         formatter = ProgressFormatter()
         downloader = YouTubeDownloader(config, formatter=formatter)
         video_url = "https://www.youtube.com/watch?v=test_video"
-        fallback_stem = "video-test_video_unknown-channel"
+        fallback_stem = "video-test_video"
         canonical_result = {
             "id": "test_video",
             "title": "Test Video",
@@ -398,14 +381,13 @@ class TestYouTubeDownloader:
         (temp_dir / f"{fallback_stem}.mp4").write_bytes(b"video")
         (temp_dir / f"{canonical_stem}.mp4").write_bytes(b"target")
 
-        mocker.patch.object(downloader, "get_metadata", return_value=None)
         mocker.patch.object(
             downloader,
             "_download_with_effective_config",
             return_value=canonical_result,
         )
-        mocker.patch.object(downloader, "_write_max_metadata_sidecar")
-        mocker.patch.object(downloader, "_emit_post_download_generated_lines")
+        mocker.patch("ytdl_archiver.core.downloader.write_max_metadata_sidecar")
+        mocker.patch("ytdl_archiver.core.downloader.emit_post_download_generated_lines")
 
         with patch("ytdl_archiver.core.downloader.emit_formatter_message") as emit_msg:
             downloader.download_video_with_config(video_url, temp_dir, None)
@@ -595,30 +577,24 @@ class TestYouTubeDownloader:
         config._config["archive"]["delay_between_videos"] = 0
         downloader = YouTubeDownloader(config)
         video_url = "https://www.youtube.com/watch?v=test_video"
-        metadata = {
+        preliminary_stem = "video-test_video"
+        download_result = {
             "id": "test_video",
             "title": "Test Video",
-            "uploader": "Test Channel",
-            "upload_date": "20240101",
+            "extractor": "youtube",
+            "webpage_url": video_url,
         }
-        filename = downloader._build_output_filename(metadata, video_url)
 
-        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
         mocker.patch.object(
             downloader,
             "_download_with_effective_config",
-            return_value={
-                "id": "test_video",
-                "title": "Test Video",
-                "extractor": "youtube",
-                "webpage_url": video_url,
-            },
+            return_value=download_result,
         )
-        mocker.patch.object(downloader, "_emit_post_download_generated_lines")
+        mocker.patch("ytdl_archiver.core.downloader.emit_post_download_generated_lines")
 
         downloader.download_video_with_config(video_url, temp_dir, {})
 
-        metadata_path = temp_dir / f"{filename}.metadata.json"
+        metadata_path = temp_dir / f"{preliminary_stem}.metadata.json"
         assert metadata_path.exists()
         payload = json.loads(metadata_path.read_text(encoding="utf-8"))
         assert payload["video_url"] == video_url
@@ -633,79 +609,70 @@ class TestYouTubeDownloader:
         config._config["archive"]["delay_between_videos"] = 0
         downloader = YouTubeDownloader(config)
         video_url = "https://www.youtube.com/watch?v=test_video"
-        metadata = {
+        preliminary_stem = "video-test_video"
+        final_mkv = temp_dir / f"{preliminary_stem}.mkv"
+        final_mkv.write_bytes(b"video")
+        download_result = {
             "id": "test_video",
             "title": "Test Video",
+            "extractor": "youtube",
             "uploader": "Test Channel",
             "upload_date": "20240101",
+            "requested_downloads": [{"filepath": str(final_mkv)}],
         }
-        base_name = downloader._build_output_filename(metadata, video_url)
-        final_mkv = temp_dir / "custom-final-name.mkv"
-        final_mkv.write_bytes(b"video")
+        canonical_stem = downloader._build_output_filename(download_result, video_url)
 
-        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
         mocker.patch.object(
             downloader,
             "_download_with_effective_config",
-            return_value={
-                "id": "test_video",
-                "title": "Test Video",
-                "extractor": "youtube",
-                "requested_downloads": [{"filepath": str(final_mkv)}],
-            },
+            return_value=download_result,
         )
-        mocker.patch.object(downloader, "_emit_post_download_generated_lines")
+        mocker.patch("ytdl_archiver.core.downloader.emit_post_download_generated_lines")
 
         downloader.download_video_with_config(video_url, temp_dir, {})
 
-        assert not (temp_dir / f"{base_name}.metadata.json").exists()
-        resolved_path = temp_dir / "custom-final-name.metadata.json"
+        # After reconciliation, sidecar should use the canonical stem
+        assert not (temp_dir / f"{preliminary_stem}.metadata.json").exists()
+        resolved_path = temp_dir / f"{canonical_stem}.metadata.json"
         assert resolved_path.exists()
 
-    def test_download_video_with_config_writes_metadata_sidecar_with_canonical_stem_when_no_media(
+    def test_download_video_with_config_writes_metadata_sidecar_with_preliminary_stem_when_no_media(
         self, config, temp_dir, mocker
     ):
-        """Test metadata sidecar falls back to canonical stem when media path is unavailable."""
+        """Test metadata sidecar uses preliminary stem when media path is unavailable."""
         config._config["archive"]["delay_between_videos"] = 0
         downloader = YouTubeDownloader(config)
         video_url = "https://www.youtube.com/watch?v=test_video"
-        metadata = {
-            "id": "test_video",
-            "title": "Test Video",
-            "uploader": "Test Channel",
-            "upload_date": "20240101",
-        }
-        filename = downloader._build_output_filename(metadata, video_url)
-        (temp_dir / f"{filename}.info.json").write_text("{}", encoding="utf-8")
+        preliminary_stem = "video-test_video"
 
-        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
         mocker.patch.object(
             downloader,
             "_download_with_effective_config",
             return_value={"id": "test_video", "title": "Test Video"},
         )
-        mocker.patch.object(downloader, "_emit_post_download_generated_lines")
+        mocker.patch("ytdl_archiver.core.downloader.emit_post_download_generated_lines")
 
         downloader.download_video_with_config(video_url, temp_dir, {})
 
-        assert (temp_dir / f"{filename}.metadata.json").exists()
+        assert (temp_dir / f"{preliminary_stem}.metadata.json").exists()
 
     def test_write_max_metadata_sidecar_emits_warning_on_failure(
         self, config, temp_dir, mocker
     ):
         """Test metadata sidecar failures surface a default-mode warning."""
-        downloader = YouTubeDownloader(config, formatter=Mock())
-        formatter = downloader.formatter
-        assert formatter is not None
+        from ytdl_archiver.core.sidecars import write_max_metadata_sidecar
+
+        formatter = Mock()
         formatter.warning.return_value = "warn-line"
 
         mocker.patch("pathlib.Path.write_text", side_effect=OSError("disk full"))
 
-        with patch("ytdl_archiver.core.downloader.emit_formatter_message") as emit_msg:
-            downloader._write_max_metadata_sidecar(
+        with patch("ytdl_archiver.core.sidecars.emit_formatter_message") as emit_msg:
+            write_max_metadata_sidecar(
                 base_path=temp_dir / "video",
                 video_url="https://www.youtube.com/watch?v=test_video",
                 download_result={"id": "test_video", "title": "Test Video"},
+                formatter=formatter,
             )
 
         emit_msg.assert_any_call(
@@ -718,9 +685,9 @@ class TestYouTubeDownloader:
         self, config, temp_dir
     ):
         """Test sidecar writing tolerates non-pickleable lock objects."""
-        downloader = YouTubeDownloader(config, formatter=Mock())
-        formatter = downloader.formatter
-        assert formatter is not None
+        from ytdl_archiver.core.sidecars import write_max_metadata_sidecar
+
+        formatter = Mock()
         formatter.warning.return_value = "warn-line"
 
         result = {
@@ -731,11 +698,12 @@ class TestYouTubeDownloader:
         }
         base_path = temp_dir / "video"
 
-        with patch("ytdl_archiver.core.downloader.emit_formatter_message") as emit_msg:
-            downloader._write_max_metadata_sidecar(
+        with patch("ytdl_archiver.core.sidecars.emit_formatter_message") as emit_msg:
+            write_max_metadata_sidecar(
                 base_path=base_path,
                 video_url="https://www.youtube.com/watch?v=test_video",
                 download_result=result,
+                formatter=formatter,
             )
 
         metadata_path = temp_dir / "video.metadata.json"
@@ -749,9 +717,9 @@ class TestYouTubeDownloader:
         self, config, temp_dir, mocker
     ):
         """Test fallback serialization for non-JSON sanitized values."""
-        downloader = YouTubeDownloader(config, formatter=Mock())
-        formatter = downloader.formatter
-        assert formatter is not None
+        from ytdl_archiver.core.sidecars import write_max_metadata_sidecar
+
+        formatter = Mock()
         formatter.warning.return_value = "warn-line"
 
         class NonJsonValue:
@@ -764,11 +732,12 @@ class TestYouTubeDownloader:
         )
         base_path = temp_dir / "video-fallback"
 
-        with patch("ytdl_archiver.core.downloader.emit_formatter_message") as emit_msg:
-            downloader._write_max_metadata_sidecar(
+        with patch("ytdl_archiver.core.sidecars.emit_formatter_message") as emit_msg:
+            write_max_metadata_sidecar(
                 base_path=base_path,
                 video_url="https://www.youtube.com/watch?v=test_video",
                 download_result={"id": "test_video"},
+                formatter=formatter,
             )
 
         metadata_path = temp_dir / "video-fallback.metadata.json"
@@ -787,25 +756,18 @@ class TestYouTubeDownloader:
         config._config["download"]["write_max_metadata_json"] = False
         downloader = YouTubeDownloader(config)
         video_url = "https://www.youtube.com/watch?v=test_video"
-        metadata = {
-            "id": "test_video",
-            "title": "Test Video",
-            "uploader": "Test Channel",
-            "upload_date": "20240101",
-        }
-        filename = downloader._build_output_filename(metadata, video_url)
+        preliminary_stem = "video-test_video"
 
-        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
         mocker.patch.object(
             downloader,
             "_download_with_effective_config",
             return_value={"id": "test_video", "title": "Test Video"},
         )
-        mocker.patch.object(downloader, "_emit_post_download_generated_lines")
+        mocker.patch("ytdl_archiver.core.downloader.emit_post_download_generated_lines")
 
         downloader.download_video_with_config(video_url, temp_dir, {})
 
-        assert not (temp_dir / f"{filename}.metadata.json").exists()
+        assert not (temp_dir / f"{preliminary_stem}.metadata.json").exists()
         opts = downloader._build_runtime_ydl_options()
         assert opts["writeinfojson"] is True
 
@@ -893,7 +855,7 @@ class TestProgressCallback:
 
         callback = ProgressCallback(formatter)
 
-        with patch("ytdl_archiver.core.downloader.emit_rendered") as emit:
+        with patch("ytdl_archiver.core.progress.emit_rendered") as emit:
             callback(
                 {
                     "status": "downloading",
@@ -997,22 +959,18 @@ class TestProgressCallback:
         formatter.mp4_generated.return_value = "mp4-line"
         formatter.subtitle_downloaded.return_value = "subtitle-line"
 
-        metadata = {"title": "Test Video", "width": 1920, "height": 1080}
-        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
+        preliminary_stem = "video-test_video"
         mocker.patch.object(
             downloader,
             "_download_with_effective_config",
             return_value={"title": "Test Video", "width": 1920, "height": 1080},
         )
 
-        filename = downloader._build_output_filename(
-            metadata, "https://www.youtube.com/watch?v=test_video"
-        )
-        (temp_dir / f"{filename}.en.vtt").write_text("vtt")
-        (temp_dir / f"{filename}.en.srt").write_text("srt")
-        (temp_dir / f"{filename}.mp4").write_bytes(b"x")
+        (temp_dir / f"{preliminary_stem}.en.vtt").write_text("vtt")
+        (temp_dir / f"{preliminary_stem}.en.srt").write_text("srt")
+        (temp_dir / f"{preliminary_stem}.mp4").write_bytes(b"x")
 
-        with patch("ytdl_archiver.core.downloader.emit_rendered") as emit:
+        with patch("ytdl_archiver.core.sidecars.emit_rendered") as emit:
             downloader.download_video_with_config(
                 "https://www.youtube.com/watch?v=test_video",
                 temp_dir,
@@ -1035,20 +993,16 @@ class TestProgressCallback:
         assert formatter is not None
         formatter.subtitle_downloaded.return_value = "subtitle-line"
 
-        metadata = {"title": "Test Video", "width": 1920, "height": 1080}
-        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
+        preliminary_stem = "video-test_video"
         mocker.patch.object(
             downloader,
             "_download_with_effective_config",
             return_value={"title": "Test Video", "width": 1920, "height": 1080},
         )
 
-        filename = downloader._build_output_filename(
-            metadata, "https://www.youtube.com/watch?v=test_video"
-        )
-        (temp_dir / f"{filename}.en.srt").write_text("srt")
+        (temp_dir / f"{preliminary_stem}.en.srt").write_text("srt")
 
-        with patch("ytdl_archiver.core.downloader.emit_rendered"):
+        with patch("ytdl_archiver.core.sidecars.emit_rendered"):
             downloader.download_video_with_config(
                 "https://www.youtube.com/watch?v=test_video",
                 temp_dir,
@@ -1067,20 +1021,16 @@ class TestProgressCallback:
         assert formatter is not None
         formatter.subtitle_downloaded.return_value = "subtitle-line"
 
-        metadata = {"title": "Test Video", "width": 1920, "height": 1080}
-        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
+        preliminary_stem = "video-test_video"
         mocker.patch.object(
             downloader,
             "_download_with_effective_config",
             return_value={"title": "Test Video", "width": 1920, "height": 1080},
         )
 
-        filename = downloader._build_output_filename(
-            metadata, "https://www.youtube.com/watch?v=test_video"
-        )
-        (temp_dir / f"{filename}.en.vtt").write_text("vtt")
+        (temp_dir / f"{preliminary_stem}.en.vtt").write_text("vtt")
 
-        with patch("ytdl_archiver.core.downloader.emit_rendered"):
+        with patch("ytdl_archiver.core.sidecars.emit_rendered"):
             downloader.download_video_with_config(
                 "https://www.youtube.com/watch?v=test_video",
                 temp_dir,
@@ -1099,21 +1049,17 @@ class TestProgressCallback:
         assert formatter is not None
         formatter.subtitle_downloaded.return_value = "subtitle-line"
 
-        metadata = {"title": "Test Video", "width": 1920, "height": 1080}
-        filename = downloader._build_output_filename(
-            metadata, "https://www.youtube.com/watch?v=test_video"
-        )
+        preliminary_stem = "video-test_video"
 
-        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
         mocker.patch.object(
             downloader,
             "_download_with_effective_config",
             return_value={"title": "Test Video", "width": 1920, "height": 1080},
         )
-        (temp_dir / f"{filename}.en.srt").write_text("srt")
-        (temp_dir / f"{filename}.en.vtt").write_text("vtt")
+        (temp_dir / f"{preliminary_stem}.en.srt").write_text("srt")
+        (temp_dir / f"{preliminary_stem}.en.vtt").write_text("vtt")
 
-        with patch("ytdl_archiver.core.downloader.emit_rendered"):
+        with patch("ytdl_archiver.core.sidecars.emit_rendered"):
             downloader.download_video_with_config(
                 "https://www.youtube.com/watch?v=test_video",
                 temp_dir,
@@ -1227,21 +1173,17 @@ class TestProgressCallback:
         formatter.thumbnail_generated.return_value = "thumbnail-line"
         formatter.container_generated.return_value = "container-line"
 
-        metadata = {"title": "Test Video", "width": 1920, "height": 1080}
-        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
+        preliminary_stem = "video-test_video"
         mocker.patch.object(
             downloader,
             "_download_with_effective_config",
             return_value={"title": "Test Video", "width": 1920, "height": 1080},
         )
 
-        filename = downloader._build_output_filename(
-            metadata, "https://www.youtube.com/watch?v=test_video"
-        )
-        (temp_dir / f"{filename}.jpg").write_bytes(b"thumb")
-        (temp_dir / f"{filename}.mp4").write_bytes(b"x" * (5 * 1024 * 1024))
+        (temp_dir / f"{preliminary_stem}.jpg").write_bytes(b"thumb")
+        (temp_dir / f"{preliminary_stem}.mp4").write_bytes(b"x" * (5 * 1024 * 1024))
 
-        with patch("ytdl_archiver.core.downloader.emit_rendered") as emit:
+        with patch("ytdl_archiver.core.sidecars.emit_rendered") as emit:
             downloader.download_video_with_config(
                 "https://www.youtube.com/watch?v=test_video",
                 temp_dir,
@@ -1267,21 +1209,17 @@ class TestProgressCallback:
         formatter.thumbnail_generated.return_value = "thumbnail-line"
         formatter.container_generated.return_value = "container-line"
 
-        metadata = {"title": "Test Video", "width": 1920, "height": 1080}
-        mocker.patch.object(downloader, "get_metadata", return_value=metadata)
+        preliminary_stem = "video-test_video"
         mocker.patch.object(
             downloader,
             "_download_with_effective_config",
             return_value={"title": "Test Video", "width": 1920, "height": 1080},
         )
 
-        filename = downloader._build_output_filename(
-            metadata, "https://www.youtube.com/watch?v=test_video"
-        )
-        (temp_dir / f"{filename}.jpg").write_bytes(b"thumb")
-        (temp_dir / f"{filename}.mkv").write_bytes(b"x" * (6 * 1024 * 1024))
+        (temp_dir / f"{preliminary_stem}.jpg").write_bytes(b"thumb")
+        (temp_dir / f"{preliminary_stem}.mkv").write_bytes(b"x" * (6 * 1024 * 1024))
 
-        with patch("ytdl_archiver.core.downloader.emit_rendered"):
+        with patch("ytdl_archiver.core.sidecars.emit_rendered"):
             downloader.download_video_with_config(
                 "https://www.youtube.com/watch?v=test_video",
                 temp_dir,

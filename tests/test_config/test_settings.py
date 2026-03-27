@@ -22,7 +22,7 @@ class TestConfig:
         # Test that default values are loaded
         assert config.get("archive.base_directory") == "~/Videos/YouTube"
         assert config.get("download.format") == "bestvideo*+bestaudio/best"
-        assert config.get("download.container_policy") == "no_webm_prefer_mp4"
+        assert config.get("download.container_policy") == "prefer_mp4"
         assert config.get("logging.level") == "INFO"
 
     def test_load_user_config(self, sample_config_file):
@@ -161,8 +161,8 @@ class TestConfig:
 
         assert playlist_config["write_subtitles"] is True
         assert playlist_config["embed_subtitles"] is True
-        assert playlist_config["format_sort"] == "res,br,fps,container"
-        assert playlist_config["container_policy"] == "no_webm_prefer_mp4"
+        assert "format_sort" not in playlist_config  # set by container_policy at runtime
+        assert playlist_config["container_policy"] == "prefer_mp4"
         assert playlist_config["write_info_json"] is True
         assert playlist_config["write_max_metadata_json"] is True
         assert playlist_config["write_thumbnail"] is True

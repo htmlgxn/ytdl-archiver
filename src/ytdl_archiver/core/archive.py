@@ -10,20 +10,16 @@ from ..exceptions import ArchiveError, ConfigurationError, DownloadError, Metada
 from ..output import emit_formatter_message, emit_rendered
 from .cookies import BrowserCookieRefresher, CookieRefreshError
 from .utils import build_output_filename
+from .ydl_options import configure_ytdlp_logging
 
-# Suppress yt-dlp's own logger to prevent unwanted output
-yt_dlp_logger = logging.getLogger("yt_dlp")
-yt_dlp_logger.setLevel(logging.CRITICAL)
-yt_dlp_logger.addHandler(logging.NullHandler())
-
+# Ensure yt-dlp loggers are suppressed (centralized in ydl_options).
+configure_ytdlp_logging()
 
 try:
     import structlog
 
     logger = structlog.get_logger()
 except ImportError:
-    import logging
-
     logger = logging.getLogger(__name__)
 
 
@@ -359,6 +355,20 @@ class PlaylistArchiver:
                             "Successfully processed video",
                             extra={"video_id": video_id, "title": title},
                         )
+                else:
+                    stats["failed"] += 1
+                    entry_title = entry.get("title", "Unknown")
+                    if self.formatter:
+                        emit_rendered(
+                            self.formatter.error(
+                                f"No download result for {entry_title} ({video_id})"
+                            )
+                        )
+                    else:
+                        logger.warning(
+                            "Download returned no result",
+                            extra={"video_id": video_id, "title": entry_title},
+                        )
 
             except (
                 ArchiveError,
@@ -380,6 +390,11 @@ class PlaylistArchiver:
                         extra={"video_id": video_id, "error": str(e)},
                     )
                 continue
+            finally:
+                # Delay between videos (after each attempt, before next video)
+                delay = self.config.get("archive.delay_between_videos", 10)
+                if delay > 0:
+                    time.sleep(delay)
 
         # Create tvshow.nfo for Jellyfin TV show library treatment
         self._create_tvshow_nfo_if_needed(
@@ -403,7 +418,6 @@ class PlaylistArchiver:
             "extract_flat": True,
             "quiet": True,
             "no_warnings": True,
-            "ignoreerrors": True,
             "no_color": True,
             "progress": False,
             "progress_with_newline": False,
@@ -412,11 +426,13 @@ class PlaylistArchiver:
             "socket_timeout": 30,
             "retries": 2,
             "extractor_retries": 2,
-            "no_check_certificates": True,
             "no_call_home": True,
             "no_update_check": True,
             "noplaylist": False,
         }
+
+        if self.config.get("http.no_check_certificates", False):
+            opts["no_check_certificates"] = True
 
         cookie_path = self.config.get_cookie_file_path()
         if cookie_path:
@@ -435,6 +451,9 @@ class PlaylistArchiver:
 
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(playlist_url, download=False)
+                # Materialize entries to guard against lazy generators
+                if isinstance(info, dict) and info.get("entries") is not None:
+                    info["entries"] = list(info["entries"])
                 entries = (
                     len(info.get("entries", []))
                     if isinstance(info, dict) and isinstance(info.get("entries"), list)

@@ -38,10 +38,10 @@ retry_backoff_factor = 2.0
 # yt-dlp format selector.
 format = "bestvideo*+bestaudio/best"
 # Container policy:
-# - "no_webm_prefer_mp4": prefer max resolution, prefer mp4 when tied, no final webm
-# - "force_mp4": always target mp4 outputs
-# - "prefer_source": keep source container unless final output would be webm
-container_policy = "no_webm_prefer_mp4"
+# - "prefer_mp4": prefer mp4 containers via format sorting (no remux)
+# - "force_mp4": always remux to mp4
+# - "prefer_source": keep whatever container yt-dlp selects
+container_policy = "prefer_mp4"
 # Final container when merging.
 merge_output_format = "mp4"
 # Write yt-dlp full extractor metadata sidecar (.info.json).
@@ -155,7 +155,7 @@ name = "Example Channel Uploads"
 [playlists.download]
 # Optional per-playlist overrides:
 # format = "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
-# container_policy = "no_webm_prefer_mp4"
+# container_policy = "prefer_mp4"
 # write_info_json = true
 # write_max_metadata_json = true
 # write_subtitles = true

@@ -303,10 +303,10 @@ path = "My Playlist"
             raise ConfigurationError("Download format cannot be empty")
 
         container_policy = str(
-            self.get("download.container_policy", "no_webm_prefer_mp4")
+            self.get("download.container_policy", "prefer_mp4")
         ).strip()
         valid_container_policies = {
-            "no_webm_prefer_mp4",
+            "prefer_mp4",
             "force_mp4",
             "prefer_source",
         }

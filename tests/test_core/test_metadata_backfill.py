@@ -253,8 +253,8 @@ class TestMetadataBackfiller:
 
         backfiller = MetadataBackfiller(config)
         create_nfo_mock = mocker.patch.object(backfiller.metadata_generator, "create_nfo_file")
-        write_metadata_mock = mocker.patch.object(
-            backfiller.downloader, "_write_max_metadata_sidecar"
+        write_metadata_mock = mocker.patch(
+            "ytdl_archiver.core.metadata_backfill.write_max_metadata_sidecar"
         )
 
         totals = backfiller.run(scope="full", refresh_existing=False)
@@ -283,8 +283,8 @@ class TestMetadataBackfiller:
         )
 
         backfiller = MetadataBackfiller(config)
-        write_metadata_mock = mocker.patch.object(
-            backfiller.downloader, "_write_max_metadata_sidecar"
+        write_metadata_mock = mocker.patch(
+            "ytdl_archiver.core.metadata_backfill.write_max_metadata_sidecar"
         )
 
         totals = backfiller.run(scope="full", refresh_existing=True)
@@ -315,8 +315,8 @@ class TestMetadataBackfiller:
         )
 
         backfiller = MetadataBackfiller(config)
-        write_metadata_mock = mocker.patch.object(
-            backfiller.downloader, "_write_max_metadata_sidecar"
+        write_metadata_mock = mocker.patch(
+            "ytdl_archiver.core.metadata_backfill.write_max_metadata_sidecar"
         )
         create_nfo_mock = mocker.patch.object(backfiller.metadata_generator, "create_nfo_file")
 
@@ -357,7 +357,7 @@ class TestMetadataBackfiller:
 
         formatter = mocker.Mock()
         backfiller = MetadataBackfiller(config, formatter=formatter)
-        mocker.patch.object(backfiller.downloader, "_write_max_metadata_sidecar")
+        mocker.patch("ytdl_archiver.core.metadata_backfill.write_max_metadata_sidecar")
         mocker.patch.object(backfiller.metadata_generator, "create_nfo_file")
 
         emit_msg = mocker.patch("ytdl_archiver.core.metadata_backfill.emit_formatter_message")
