@@ -438,9 +438,10 @@ def dedupe_cmd(
             emit_rendered("Dry run: no files were modified.")
 
         for detail in summary["details"]:
+            display_destination = detail["renamed_to"] or detail["archive_destination"]
             emit_rendered(
                 f"{detail['action']}: {detail['match_method']}={detail['match_key']} "
-                f"-> {detail['archive_destination']}"
+                f"-> {display_destination}"
             )
             for copied_path in detail["copied"]:
                 emit_rendered(f"  copy sidecar -> {copied_path}")

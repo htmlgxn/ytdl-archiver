@@ -398,6 +398,64 @@ base_directory = "{temp_dir}/downloads"
             assert result.exit_code == 2
             assert "SOURCE_DIR and ARCHIVE_DIR must resolve to different directories" in result.output
 
+    @patch("ytdl_archiver.cli.run_dedupe")
+    @patch("ytdl_archiver.cli.Config")
+    def test_dedupe_dry_run_prefers_canonical_destination_in_primary_line(
+        self, mock_config_class, mock_run_dedupe
+    ):
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            source_dir = Path(temp_dir) / "source"
+            archive_dir = Path(temp_dir) / "archive"
+            config_file.write_text("")
+            source_dir.mkdir()
+            archive_dir.mkdir()
+
+            mock_config = Mock()
+            mock_config.as_dict.return_value = {"logging": {"level": "INFO"}}
+            mock_config.migrate_playlists_from_cwd.return_value = None
+            mock_config_class.return_value = mock_config
+            mock_run_dedupe.return_value = {
+                "processed_sets": 1,
+                "imported_sets": 1,
+                "replaced_sets": 0,
+                "merged_sets": 0,
+                "sidecars_copied": 0,
+                "archive_winners_renamed": 1,
+                "details": [
+                    {
+                        "action": "import",
+                        "match_method": "video_id",
+                        "match_key": "abc123",
+                        "archive_destination": str(archive_dir / "legacy"),
+                        "source_origin": str(source_dir / "legacy"),
+                        "archive_replaced": False,
+                        "copied": [],
+                        "renamed_to": str(archive_dir / "canonical-video_channel"),
+                        "rename_blocked": False,
+                    }
+                ],
+            }
+
+            result = self.runner.invoke(
+                cli,
+                [
+                    "--config",
+                    str(config_file),
+                    "dedupe",
+                    str(source_dir),
+                    str(archive_dir),
+                    "--delete",
+                    "--dry-run",
+                ],
+            )
+
+            assert result.exit_code == 0
+            assert (
+                f"import: video_id=abc123 -> {archive_dir / 'canonical-video_channel'}"
+                in result.output
+            )
+
     @patch("ytdl_archiver.cli.BrowserCookieRefresher")
     @patch("ytdl_archiver.cli.PlaylistArchiver")
     @patch("ytdl_archiver.cli.Config")
