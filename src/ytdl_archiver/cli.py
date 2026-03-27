@@ -14,6 +14,7 @@ from . import __version__
 from .config.settings import Config
 from .core.archive import PlaylistArchiver
 from .core.cookies import SUPPORTED_BROWSERS, BrowserCookieRefresher
+from .core.dedupe import run_dedupe
 from .core.metadata_backfill import MetadataBackfiller
 from .core.playlist_writer import PlaylistEntry, PlaylistWriter
 from .core.search import InvidiousSearchService, SearchResult
@@ -371,6 +372,105 @@ def metadata_backfill(
                 click.echo(message, err=True)
         else:
             click.echo(f"Metadata backfill failed - {e!s}", err=True)
+        sys.exit(1)
+
+
+@cli.command(name="dedupe")
+@click.argument("dir1", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.argument(
+    "dir2",
+    required=False,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option("--trash-dir", type=click.Path(file_okay=False, path_type=Path))
+@click.option("--delete", is_flag=True, help="Permanently delete loser artifacts")
+@click.option("--dry-run", is_flag=True, help="Print planned changes without modifying files")
+@click.option("--verbose", is_flag=True, help="Show per-duplicate detail")
+@click.pass_context
+def dedupe_cmd(
+    ctx: click.Context,
+    dir1: Path,
+    dir2: Path | None,
+    trash_dir: Path | None,
+    delete: bool,
+    dry_run: bool,
+    verbose: bool,
+) -> None:
+    """Deduplicate archived videos across two archive directories."""
+    if bool(trash_dir) == bool(delete):
+        raise click.UsageError("Specify exactly one of --trash-dir or --delete.")
+
+    formatter = None
+    try:
+        config = ctx.obj["config"]
+        output_mode = ctx.obj.get("output_mode", "progress")
+        use_colors = ctx.obj.get("use_colors", True)
+
+        formatter = get_formatter(use_colors, show_progress=False, mode=output_mode)
+
+        effective_dir1 = dir1.expanduser().resolve()
+        effective_dir2 = (
+            dir2.expanduser().resolve()
+            if dir2 is not None
+            else config.get_archive_directory().resolve()
+        )
+        if effective_dir1 == effective_dir2:
+            raise click.UsageError("DIR1 and DIR2 must resolve to different directories.")
+
+        emit_rendered(formatter.logo_header())
+        emit_rendered(formatter.header(__version__))
+        emit_rendered(
+            formatter.archive_directory(f"{effective_dir1} <-> {effective_dir2}")
+        )
+
+        summary = run_dedupe(
+            effective_dir1,
+            effective_dir2,
+            trash_dir=trash_dir.expanduser() if trash_dir else None,
+            delete=delete,
+            dry_run=dry_run,
+            verbose=verbose,
+            config=config,
+        )
+
+        if dry_run:
+            emit_rendered("Dry run: no files were modified.")
+
+        for detail in summary["details"]:
+            emit_rendered(
+                f"{detail['match_method']}: keep {detail['winner']} "
+                f"drop {', '.join(detail['losers'])}"
+            )
+            for copied_path in detail["copied"]:
+                emit_rendered(f"  copy sidecar -> {copied_path}")
+            if detail["renamed_to"]:
+                emit_rendered(f"  rename winner -> {detail['renamed_to']}")
+            if detail["rename_blocked"]:
+                emit_rendered("  rename blocked by existing canonical target; losers preserved")
+
+        emit_rendered(
+            "Dedupe complete. "
+            f"Sets: {summary['duplicate_sets']}, "
+            f"losers disposed: {summary['losers_disposed']}, "
+            f"sidecars copied: {summary['sidecars_copied']}, "
+            f"winners renamed: {summary['winners_renamed']}"
+        )
+
+    except KeyboardInterrupt:
+        if formatter:
+            message = formatter.error("Operation cancelled by user")
+            if message:
+                click.echo(message, err=True)
+        else:
+            click.echo("Operation cancelled by user", err=True)
+        sys.exit(130)
+    except (ConfigurationError, OSError, RuntimeError, ValueError) as e:
+        if formatter:
+            message = formatter.error(f"Dedupe failed - {e!s}")
+            if message:
+                click.echo(message, err=True)
+        else:
+            click.echo(f"Dedupe failed - {e!s}", err=True)
         sys.exit(1)
 
 

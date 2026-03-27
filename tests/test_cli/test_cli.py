@@ -30,6 +30,7 @@ class TestCLI:
         assert "init" in result.output
         assert "init-config" not in result.output
         assert "convert-playlists" in result.output
+        assert "dedupe" in result.output
         assert "search" in result.output
 
     def test_cli_version(self):
@@ -242,6 +243,156 @@ base_directory = "{temp_dir}/downloads"
                 "default-release",
                 Path(temp_dir) / "cookies.txt",
             )
+
+    @patch("ytdl_archiver.cli.run_dedupe")
+    @patch("ytdl_archiver.cli.Config")
+    def test_dedupe_command_basic(self, mock_config_class, mock_run_dedupe):
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            left_dir = Path(temp_dir) / "left"
+            right_dir = Path(temp_dir) / "right"
+            config_file.write_text("")
+            left_dir.mkdir()
+            right_dir.mkdir()
+
+            mock_config = Mock()
+            mock_config.as_dict.return_value = {"logging": {"level": "INFO"}}
+            mock_config.migrate_playlists_from_cwd.return_value = None
+            mock_config_class.return_value = mock_config
+            mock_run_dedupe.return_value = {
+                "duplicate_sets": 1,
+                "losers_disposed": 1,
+                "sidecars_copied": 0,
+                "winners_renamed": 1,
+                "details": [],
+            }
+
+            result = self.runner.invoke(
+                cli,
+                [
+                    "--config",
+                    str(config_file),
+                    "dedupe",
+                    str(left_dir),
+                    str(right_dir),
+                    "--delete",
+                ],
+            )
+
+            assert result.exit_code == 0
+            mock_run_dedupe.assert_called_once_with(
+                left_dir.resolve(),
+                right_dir.resolve(),
+                trash_dir=None,
+                delete=True,
+                dry_run=False,
+                verbose=False,
+                config=mock_config,
+            )
+
+    @patch("ytdl_archiver.cli.run_dedupe")
+    @patch("ytdl_archiver.cli.Config")
+    def test_dedupe_command_defaults_dir2_to_archive_directory(
+        self, mock_config_class, mock_run_dedupe
+    ):
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            left_dir = Path(temp_dir) / "left"
+            archive_dir = Path(temp_dir) / "archive"
+            config_file.write_text("")
+            left_dir.mkdir()
+            archive_dir.mkdir()
+
+            mock_config = Mock()
+            mock_config.as_dict.return_value = {"logging": {"level": "INFO"}}
+            mock_config.migrate_playlists_from_cwd.return_value = None
+            mock_config.get_archive_directory.return_value = archive_dir
+            mock_config_class.return_value = mock_config
+            mock_run_dedupe.return_value = {
+                "duplicate_sets": 0,
+                "losers_disposed": 0,
+                "sidecars_copied": 0,
+                "winners_renamed": 0,
+                "details": [],
+            }
+
+            result = self.runner.invoke(
+                cli,
+                [
+                    "--config",
+                    str(config_file),
+                    "dedupe",
+                    str(left_dir),
+                    "--delete",
+                ],
+            )
+
+            assert result.exit_code == 0
+            mock_run_dedupe.assert_called_once_with(
+                left_dir.resolve(),
+                archive_dir.resolve(),
+                trash_dir=None,
+                delete=True,
+                dry_run=False,
+                verbose=False,
+                config=mock_config,
+            )
+
+    def test_dedupe_command_rejects_invalid_disposal_flags(self):
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            left_dir = Path(temp_dir) / "left"
+            right_dir = Path(temp_dir) / "right"
+            trash_dir = Path(temp_dir) / "trash"
+            config_file.write_text("")
+            left_dir.mkdir()
+            right_dir.mkdir()
+            trash_dir.mkdir()
+
+            result = self.runner.invoke(
+                cli,
+                [
+                    "--config",
+                    str(config_file),
+                    "dedupe",
+                    str(left_dir),
+                    str(right_dir),
+                    "--trash-dir",
+                    str(trash_dir),
+                    "--delete",
+                ],
+            )
+
+            assert result.exit_code == 2
+            assert "Specify exactly one" in result.output
+
+    @patch("ytdl_archiver.cli.Config")
+    def test_dedupe_command_rejects_identical_directories(self, mock_config_class):
+        with CliRunner().isolated_filesystem() as temp_dir:
+            config_file = Path(temp_dir) / "config.toml"
+            left_dir = Path(temp_dir) / "same"
+            config_file.write_text("")
+            left_dir.mkdir()
+
+            mock_config = Mock()
+            mock_config.as_dict.return_value = {"logging": {"level": "INFO"}}
+            mock_config.migrate_playlists_from_cwd.return_value = None
+            mock_config_class.return_value = mock_config
+
+            result = self.runner.invoke(
+                cli,
+                [
+                    "--config",
+                    str(config_file),
+                    "dedupe",
+                    str(left_dir),
+                    str(left_dir),
+                    "--delete",
+                ],
+            )
+
+            assert result.exit_code == 2
+            assert "must resolve to different directories" in result.output
 
     @patch("ytdl_archiver.cli.BrowserCookieRefresher")
     @patch("ytdl_archiver.cli.PlaylistArchiver")
