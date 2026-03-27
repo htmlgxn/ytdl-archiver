@@ -57,6 +57,41 @@ def _write_metadata_json(
     )
 
 
+def _write_nfo(
+    path: Path,
+    *,
+    video_id: str,
+    title: str = "Video",
+    showtitle: str = "",
+    studio: str = "",
+    releasedate: str = "",
+    aired: str = "",
+) -> None:
+    channel_bits = ""
+    if showtitle:
+        channel_bits += f"<showtitle>{showtitle}</showtitle>"
+    if studio:
+        channel_bits += f"<studio>{studio}</studio>"
+    date_bits = ""
+    if releasedate:
+        date_bits += f"<releasedate>{releasedate}</releasedate>"
+    if aired:
+        date_bits += f"<aired>{aired}</aired>"
+
+    path.write_text(
+        (
+            "<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\"?>"
+            "<episodedetails>"
+            f"<title>{title}</title>"
+            f"{channel_bits}"
+            f"{date_bits}"
+            f"<uniqueid type=\"youtube\" default=\"true\">{video_id}</uniqueid>"
+            "</episodedetails>"
+        ),
+        encoding="utf-8",
+    )
+
+
 class TestDedupe:
     def test_scan_directory_recurses_into_nested_playlist_folders(self, temp_dir: Path):
         root = temp_dir / "source"
@@ -106,6 +141,143 @@ class TestDedupe:
         assert (archive_dir / "Imports" / "Channel A" / f"{final_stem}.info.json").exists()
         assert (archive_dir / "Imports" / "Channel A" / f"{final_stem}.en.srt").exists()
         assert not (source_leaf / "legacy.mp4").exists()
+
+    def test_run_dedupe_renames_nfo_only_import_using_config_rules(
+        self, config, temp_dir: Path
+    ):
+        source_dir = temp_dir / "source"
+        archive_dir = temp_dir / "archive"
+        source_leaf = source_dir / "Imports" / "Channel A"
+        archive_dir.mkdir()
+        config._config["filename"]["tokens"] = ["upload_date", "title", "channel"]
+        config._config["filename"]["date_format"] = "yyyymmdd"
+
+        _write_bytes(source_leaf / "legacy.mp4", 8)
+        _write_nfo(
+            source_leaf / "legacy.nfo",
+            video_id="abc123",
+            title="Imported Video",
+            showtitle="Source Channel",
+            releasedate="2025-01-31",
+        )
+
+        summary = run_dedupe(
+            source_dir,
+            archive_dir,
+            trash_dir=None,
+            delete=True,
+            dry_run=False,
+            verbose=True,
+            config=config,
+        )
+
+        final_stem = "20250131_imported-video_source-channel"
+        assert summary["archive_winners_renamed"] == 1
+        assert (archive_dir / "Imports" / "Channel A" / f"{final_stem}.mp4").exists()
+        assert (archive_dir / "Imports" / "Channel A" / f"{final_stem}.nfo").exists()
+
+    def test_run_dedupe_nfo_prefers_showtitle_and_releasedate_over_fallbacks(
+        self, config, temp_dir: Path
+    ):
+        source_dir = temp_dir / "source"
+        archive_dir = temp_dir / "archive"
+        source_leaf = source_dir / "Imports" / "Channel A"
+        archive_dir.mkdir()
+        config._config["filename"]["tokens"] = ["upload_date", "title", "channel"]
+        config._config["filename"]["date_format"] = "yyyymmdd"
+
+        _write_bytes(source_leaf / "legacy.mp4", 8)
+        _write_nfo(
+            source_leaf / "legacy.nfo",
+            video_id="abc123",
+            title="Imported Video",
+            showtitle="Primary Channel",
+            studio="Fallback Studio",
+            releasedate="2025-01-31",
+            aired="2020-02-03",
+        )
+
+        run_dedupe(
+            source_dir,
+            archive_dir,
+            trash_dir=None,
+            delete=True,
+            dry_run=False,
+            verbose=False,
+            config=config,
+        )
+
+        assert (
+            archive_dir / "Imports" / "Channel A" / "20250131_imported-video_primary-channel.mp4"
+        ).exists()
+
+    def test_run_dedupe_nfo_falls_back_to_studio_and_aired(self, config, temp_dir: Path):
+        source_dir = temp_dir / "source"
+        archive_dir = temp_dir / "archive"
+        source_leaf = source_dir / "Imports" / "Channel A"
+        archive_dir.mkdir()
+        config._config["filename"]["tokens"] = ["upload_date", "title", "channel"]
+        config._config["filename"]["date_format"] = "yyyymmdd"
+
+        _write_bytes(source_leaf / "legacy.mp4", 8)
+        _write_nfo(
+            source_leaf / "legacy.nfo",
+            video_id="abc123",
+            title="Imported Video",
+            studio="Fallback Studio",
+            aired="2025-02-01",
+        )
+
+        run_dedupe(
+            source_dir,
+            archive_dir,
+            trash_dir=None,
+            delete=True,
+            dry_run=False,
+            verbose=False,
+            config=config,
+        )
+
+        assert (
+            archive_dir / "Imports" / "Channel A" / "20250201_imported-video_fallback-studio.mp4"
+        ).exists()
+
+    def test_run_dedupe_json_metadata_outranks_nfo_for_rename(self, config, temp_dir: Path):
+        source_dir = temp_dir / "source"
+        archive_dir = temp_dir / "archive"
+        source_leaf = source_dir / "Imports" / "Channel A"
+        archive_dir.mkdir()
+        config._config["filename"]["tokens"] = ["upload_date", "title", "channel"]
+        config._config["filename"]["date_format"] = "yyyymmdd"
+
+        _write_bytes(source_leaf / "legacy.mp4", 8)
+        _write_info_json(
+            source_leaf / "legacy.info.json",
+            video_id="abc123",
+            title="Json Video",
+            uploader="Json Channel",
+        )
+        _write_nfo(
+            source_leaf / "legacy.nfo",
+            video_id="abc123",
+            title="Nfo Video",
+            showtitle="Nfo Channel",
+            releasedate="2020-01-01",
+        )
+
+        run_dedupe(
+            source_dir,
+            archive_dir,
+            trash_dir=None,
+            delete=True,
+            dry_run=False,
+            verbose=False,
+            config=config,
+        )
+
+        assert (
+            archive_dir / "Imports" / "Channel A" / "20250131_json-video_json-channel.mp4"
+        ).exists()
 
     def test_run_dedupe_replaces_archive_media_but_keeps_archive_subdirectory(
         self, config, temp_dir: Path

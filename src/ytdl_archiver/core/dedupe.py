@@ -96,6 +96,51 @@ def _safe_read_json(path: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def _coerce_nfo_date(value: str) -> str:
+    raw = str(value or "").strip()
+    if re.fullmatch(r"\d{8}", raw):
+        return raw
+    matched = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", raw)
+    if matched:
+        return "".join(matched.groups())
+    return ""
+
+
+def _parse_nfo_metadata(path: Path) -> tuple[dict[str, Any], str] | None:
+    try:
+        root = ET.fromstring(path.read_text(encoding="utf-8"))
+    except (ET.ParseError, OSError, UnicodeDecodeError):
+        return None
+
+    def _text(tag: str) -> str:
+        value = root.findtext(f".//{tag}")
+        return str(value or "").strip()
+
+    title = _text("title")
+    uploader = _text("showtitle") or _text("studio")
+    upload_date = _coerce_nfo_date(_text("releasedate") or _text("aired"))
+    video_id = ""
+    for uniqueid in root.findall(".//uniqueid"):
+        if uniqueid.attrib.get("type") == "youtube":
+            video_id = str(uniqueid.text or "").strip()
+            if video_id:
+                break
+
+    metadata: dict[str, Any] = {}
+    if title:
+        metadata["title"] = title
+    if uploader:
+        metadata["uploader"] = uploader
+    if upload_date:
+        metadata["upload_date"] = upload_date
+    if video_id:
+        metadata["id"] = video_id
+
+    if not metadata:
+        return None
+    return metadata, ""
+
+
 def _metadata_candidates(group: StemGroup) -> list[tuple[dict[str, Any], str]]:
     candidates: list[tuple[dict[str, Any], str]] = []
 
@@ -128,6 +173,11 @@ def _metadata_candidates(group: StemGroup) -> list[tuple[dict[str, Any], str]]:
         )
         candidates.append((info_data, url))
 
+    nfo_path = group.directory / f"{group.stem}.nfo"
+    nfo_candidate = _parse_nfo_metadata(nfo_path)
+    if nfo_candidate is not None:
+        candidates.append(nfo_candidate)
+
     return candidates
 
 
@@ -140,19 +190,6 @@ def extract_video_id_from_stem_group(group: StemGroup) -> str | None:
         extracted = str(extract_video_id(video_url, metadata)).strip()
         if extracted and extracted != "unknown-video":
             return extracted
-
-    nfo_path = group.directory / f"{group.stem}.nfo"
-    if nfo_path.exists():
-        try:
-            root = ET.fromstring(nfo_path.read_text(encoding="utf-8"))
-        except (ET.ParseError, OSError, UnicodeDecodeError):
-            root = None
-        if root is not None:
-            for uniqueid in root.findall(".//uniqueid"):
-                if uniqueid.attrib.get("type") == "youtube":
-                    value = (uniqueid.text or "").strip()
-                    if value:
-                        return value
 
     stem = group.stem.strip()
     if "youtube.com/" in stem or "youtu.be/" in stem or "/shorts/" in stem:
