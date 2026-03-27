@@ -28,6 +28,9 @@ _MEDIA_EXTENSIONS = {
 }
 _SUBTITLE_EXTENSIONS = {".srt", ".vtt", ".ass", ".ssa", ".lrc"}
 _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+_ARCHIVE_MEDIA_EXTENSIONS = {".mp4", ".webm"}
+_ARCHIVE_IMAGE_EXTENSIONS = {".jpg"}
+_ARCHIVE_SUBTITLE_EXTENSIONS = {".srt"}
 _KNOWN_SINGLE_EXTENSIONS = (
     _MEDIA_EXTENSIONS
     | _SUBTITLE_EXTENSIONS
@@ -279,8 +282,28 @@ def _suffix_fragment(path: Path, stem: str) -> str:
     return path.name[len(stem) :]
 
 
-def _is_sidecar(path: Path) -> bool:
-    return path.suffix.lower() not in _MEDIA_EXTENSIONS
+def _artifact_category(path: Path) -> str | None:
+    suffix = path.suffix.lower()
+    if suffix in _ARCHIVE_MEDIA_EXTENSIONS:
+        return "video"
+    if suffix in _ARCHIVE_IMAGE_EXTENSIONS:
+        return "image"
+    if suffix in _ARCHIVE_SUBTITLE_EXTENSIONS:
+        return "subtitle"
+    return None
+
+
+def _is_importable_artifact(path: Path) -> bool:
+    return _artifact_category(path) is not None
+
+
+def _category_key(path: Path, stem: str) -> str | None:
+    category = _artifact_category(path)
+    if category is None:
+        return None
+    if category == "video":
+        return "video"
+    return f"{category}:{_suffix_fragment(path, stem).lower()}"
 
 
 def _refresh_group_files(group: StemGroup) -> None:
@@ -289,17 +312,22 @@ def _refresh_group_files(group: StemGroup) -> None:
 
 
 def merge_missing_sidecars(target: StemGroup, donor: StemGroup, *, dry_run: bool) -> list[Path]:
-    """Copy donor sidecars that are absent from the target stem."""
+    """Copy donor importable artifacts that are absent from the target stem."""
     copied: list[Path] = []
-    existing = {path.name for path in target.files}
+    existing_keys = {
+        key
+        for path in target.files
+        if (key := _category_key(path, target.stem)) is not None
+    }
     for path in sorted(donor.files):
-        if not _is_sidecar(path):
+        key = _category_key(path, donor.stem)
+        if key is None or key in existing_keys:
             continue
         target_path = target.directory / f"{target.stem}{_suffix_fragment(path, donor.stem)}"
-        if target_path.name in existing or target_path.exists():
+        if target_path.exists():
             continue
         copied.append(target_path)
-        existing.add(target_path.name)
+        existing_keys.add(key)
         if not dry_run:
             target.directory.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, target_path)
@@ -436,13 +464,14 @@ def materialize_source_group(
 ) -> StemGroup:
     """Move a source group into the archive tree under the requested stem."""
     target_directory = archive_root / target_parent
+    importable_files = [path for path in sorted(source.files) if _is_importable_artifact(path)]
     target_files = [
         target_directory / f"{target_stem}{_suffix_fragment(path, source.stem)}"
-        for path in sorted(source.files)
+        for path in importable_files
     ]
     if not dry_run:
         target_directory.mkdir(parents=True, exist_ok=True)
-        for path, target in zip(sorted(source.files), target_files, strict=True):
+        for path, target in zip(importable_files, target_files, strict=True):
             if target.exists():
                 raise RuntimeError(f"Archive target already exists: {target}")
             shutil.move(str(path), str(target))
@@ -466,6 +495,7 @@ def _replace_archive_group(
     temp_archived: StemGroup | None = None
 
     if dry_run:
+        importable_files = [path for path in sorted(source.files) if _is_importable_artifact(path)]
         final_group = _build_group_from_paths(
             root=archive_root,
             directory=destination.directory,
@@ -473,7 +503,7 @@ def _replace_archive_group(
             stem=destination.stem,
             files=[
                 destination.directory / f"{destination.stem}{_suffix_fragment(path, source.stem)}"
-                for path in sorted(source.files)
+                for path in importable_files
             ],
             template=source,
         )

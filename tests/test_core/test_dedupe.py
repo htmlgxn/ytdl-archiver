@@ -138,8 +138,8 @@ class TestDedupe:
         assert summary["processed_sets"] == 1
         assert summary["imported_sets"] == 1
         assert (archive_dir / "Imports" / "Channel A" / f"{final_stem}.mp4").exists()
-        assert (archive_dir / "Imports" / "Channel A" / f"{final_stem}.info.json").exists()
         assert (archive_dir / "Imports" / "Channel A" / f"{final_stem}.en.srt").exists()
+        assert not (archive_dir / "Imports" / "Channel A" / f"{final_stem}.info.json").exists()
         assert not (source_leaf / "legacy.mp4").exists()
 
     def test_run_dedupe_renames_nfo_only_import_using_config_rules(
@@ -174,7 +174,7 @@ class TestDedupe:
         final_stem = "20250131_imported-video_source-channel"
         assert summary["archive_winners_renamed"] == 1
         assert (archive_dir / "Imports" / "Channel A" / f"{final_stem}.mp4").exists()
-        assert (archive_dir / "Imports" / "Channel A" / f"{final_stem}.nfo").exists()
+        assert not (archive_dir / "Imports" / "Channel A" / f"{final_stem}.nfo").exists()
 
     def test_run_dedupe_nfo_prefers_showtitle_and_releasedate_over_fallbacks(
         self, config, temp_dir: Path
@@ -323,9 +323,9 @@ class TestDedupe:
         assert summary["replaced_sets"] == 1
         assert summary["archive_groups_disposed"] == 1
         assert (archive_leaf / f"{final_stem}.mp4").exists()
-        assert (archive_leaf / f"{final_stem}.info.json").exists()
         assert (archive_leaf / f"{final_stem}.en.srt").exists()
-        assert (archive_leaf / f"{final_stem}.nfo").exists()
+        assert not (archive_leaf / f"{final_stem}.nfo").exists()
+        assert not (archive_leaf / f"{final_stem}.info.json").exists()
         assert not (source_leaf / "source-copy.mp4").exists()
         assert not (archive_leaf / "old-archive.mp4").exists()
 
@@ -369,9 +369,97 @@ class TestDedupe:
         assert summary["merged_sets"] == 1
         assert (archive_leaf / f"{final_stem}.mp4").exists()
         assert (archive_leaf / f"{final_stem}.metadata.json").exists()
-        assert (archive_leaf / f"{final_stem}.info.json").exists()
         assert (archive_leaf / f"{final_stem}.en.srt").exists()
+        assert not (archive_leaf / f"{final_stem}.info.json").exists()
         assert not (source_leaf / "source-copy.mp4").exists()
+
+    def test_run_dedupe_imports_only_whitelisted_artifacts(self, config, temp_dir: Path):
+        source_dir = temp_dir / "source"
+        archive_dir = temp_dir / "archive"
+        source_leaf = source_dir / "Imports" / "Channel A"
+        archive_dir.mkdir()
+        config._config["filename"]["tokens"] = ["upload_date", "title", "channel"]
+        config._config["filename"]["date_format"] = "yyyymmdd"
+
+        _write_bytes(source_leaf / "legacy.webm", 8)
+        (source_leaf / "legacy.jpg").write_text("jpg", encoding="utf-8")
+        (source_leaf / "legacy.webp").write_text("webp", encoding="utf-8")
+        (source_leaf / "legacy.en.srt").write_text("subtitle", encoding="utf-8")
+        _write_info_json(
+            source_leaf / "legacy.info.json",
+            video_id="abc123",
+            title="Imported Video",
+            uploader="Source Channel",
+        )
+        _write_metadata_json(
+            source_leaf / "legacy.metadata.json",
+            video_id="abc123",
+            title="Imported Video",
+            uploader="Source Channel",
+        )
+        _write_nfo(
+            source_leaf / "legacy.nfo",
+            video_id="abc123",
+            title="Imported Video",
+            showtitle="Source Channel",
+            releasedate="2025-01-31",
+        )
+
+        run_dedupe(
+            source_dir,
+            archive_dir,
+            trash_dir=None,
+            delete=True,
+            dry_run=False,
+            verbose=False,
+            config=config,
+        )
+
+        final_base = archive_dir / "Imports" / "Channel A" / "20250131_imported-video_source-channel"
+        assert final_base.with_suffix(".webm").exists()
+        assert final_base.with_suffix(".jpg").exists()
+        assert (archive_dir / "Imports" / "Channel A" / "20250131_imported-video_source-channel.en.srt").exists()
+        assert not final_base.with_suffix(".webp").exists()
+        assert not final_base.with_suffix(".info.json").exists()
+        assert not final_base.with_suffix(".metadata.json").exists()
+        assert not final_base.with_suffix(".nfo").exists()
+
+    def test_run_dedupe_treats_mp4_and_webm_as_same_media_slot(self, config, temp_dir: Path):
+        source_dir = temp_dir / "source"
+        archive_dir = temp_dir / "archive"
+        source_leaf = source_dir / "Incoming" / "Channel"
+        archive_leaf = archive_dir / "Playlists" / "Named"
+        config._config["filename"]["tokens"] = ["title", "channel"]
+
+        _write_bytes(source_leaf / "source-copy.mp4", 5)
+        _write_info_json(
+            source_leaf / "source-copy.info.json",
+            video_id="abc123",
+            title="Canonical Video",
+            uploader="Archive Channel",
+        )
+
+        _write_bytes(archive_leaf / "archived.webm", 15)
+        _write_metadata_json(
+            archive_leaf / "archived.metadata.json",
+            video_id="abc123",
+            title="Canonical Video",
+            uploader="Archive Channel",
+        )
+
+        run_dedupe(
+            source_dir,
+            archive_dir,
+            trash_dir=None,
+            delete=True,
+            dry_run=False,
+            verbose=False,
+            config=config,
+        )
+
+        final_stem = "canonical-video_archive-channel"
+        assert (archive_leaf / f"{final_stem}.webm").exists()
+        assert not (archive_leaf / f"{final_stem}.mp4").exists()
 
     def test_run_dedupe_uses_filename_fallback_recursively(self, config, temp_dir: Path):
         source_dir = temp_dir / "source"
