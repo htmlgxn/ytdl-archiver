@@ -430,9 +430,26 @@ base_directory = "{temp_dir}/downloads"
                         "archive_destination": str(archive_dir / "legacy"),
                         "source_origin": str(source_dir / "legacy"),
                         "archive_replaced": False,
-                        "copied": [],
                         "renamed_to": str(archive_dir / "canonical-video_channel"),
                         "rename_blocked": False,
+                        "operations": [
+                            {
+                                "kind": "import_file",
+                                "source_path": str(source_dir / "legacy.mp4"),
+                                "target_path": str(archive_dir / "legacy.mp4"),
+                                "origin": "source",
+                                "reason": "source-only video imported into archive",
+                                "status": "planned",
+                            },
+                            {
+                                "kind": "rename_file",
+                                "source_path": str(archive_dir / "legacy"),
+                                "target_path": str(archive_dir / "canonical-video_channel"),
+                                "origin": "archive",
+                                "reason": "canonical filename from config and metadata",
+                                "status": "planned",
+                            },
+                        ],
                     }
                 ],
             }
@@ -451,8 +468,13 @@ base_directory = "{temp_dir}/downloads"
             )
 
             assert result.exit_code == 0
+            assert "import: video_id=abc123" in result.output
             assert (
-                f"import: video_id=abc123 -> {archive_dir / 'canonical-video_channel'}"
+                f"IMPORT   SOURCE  {source_dir / 'legacy.mp4'} -> {archive_dir / 'legacy.mp4'}"
+                in result.output
+            )
+            assert (
+                f"RENAME   ARCHIVE {archive_dir / 'legacy'} -> {archive_dir / 'canonical-video_channel'}"
                 in result.output
             )
 
@@ -488,11 +510,22 @@ base_directory = "{temp_dir}/downloads"
                         "archive_destination": str(archive_dir / "legacy-video"),
                         "source_origin": str(source_dir / "legacy-video"),
                         "archive_replaced": False,
-                        "copied": [],
                         "renamed_to": str(
                             archive_dir / "20250131_imported-video_source-channel"
                         ),
                         "rename_blocked": False,
+                        "operations": [
+                            {
+                                "kind": "rename_file",
+                                "source_path": str(archive_dir / "legacy-video"),
+                                "target_path": str(
+                                    archive_dir / "20250131_imported-video_source-channel"
+                                ),
+                                "origin": "archive",
+                                "reason": "canonical filename from config and metadata",
+                                "status": "planned",
+                            }
+                        ],
                     }
                 ],
             }
@@ -511,8 +544,9 @@ base_directory = "{temp_dir}/downloads"
             )
 
             assert result.exit_code == 0
+            assert "import: filename=legacy-video" in result.output
             assert (
-                "import: filename=legacy-video -> "
+                f"RENAME   ARCHIVE {archive_dir / 'legacy-video'} -> "
                 f"{archive_dir / '20250131_imported-video_source-channel'}"
             ) in result.output
 

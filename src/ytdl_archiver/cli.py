@@ -438,19 +438,21 @@ def dedupe_cmd(
             emit_rendered("Dry run: no files were modified.")
 
         for detail in summary["details"]:
-            display_destination = detail["renamed_to"] or detail["archive_destination"]
-            emit_rendered(
-                f"{detail['action']}: {detail['match_method']}={detail['match_key']} "
-                f"-> {display_destination}"
-            )
-            for copied_path in detail["copied"]:
-                emit_rendered(f"  copy sidecar -> {copied_path}")
-            if detail["archive_replaced"]:
-                emit_rendered(f"  replace archive from {detail['source_origin']}")
-            if detail["renamed_to"]:
-                emit_rendered(f"  rename archive -> {detail['renamed_to']}")
-            if detail["rename_blocked"]:
-                emit_rendered("  rename blocked by existing canonical target")
+            emit_rendered(f"{detail['action']}: {detail['match_method']}={detail['match_key']}")
+            for operation in detail["operations"]:
+                kind = str(operation["kind"]).upper().replace("_FILE", "")
+                origin = str(operation["origin"]).upper()
+                source_path = operation.get("source_path") or ""
+                target_path = operation.get("target_path") or ""
+                reason = operation.get("reason") or ""
+                if target_path:
+                    emit_rendered(
+                        f"  {kind:<8} {origin:<7} {source_path} -> {target_path} ({reason})"
+                    )
+                else:
+                    emit_rendered(
+                        f"  {kind:<8} {origin:<7} {source_path} ({reason})"
+                    )
 
         emit_rendered(
             "Dedupe complete. "
