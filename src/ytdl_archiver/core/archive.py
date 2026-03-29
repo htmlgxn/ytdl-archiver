@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlparse
 from ..exceptions import ArchiveError, ConfigurationError, DownloadError, MetadataError
 from ..output import emit_formatter_message, emit_rendered
 from .cookies import BrowserCookieRefresher, CookieRefreshError
+from .sidecars import resolve_output_base_path
 from .utils import build_output_filename
 from .ydl_options import configure_ytdlp_logging
 
@@ -346,9 +347,34 @@ class PlaylistArchiver:
                     tracker.mark_downloaded(video_id)
 
                     if self.formatter:
+                        # Collect all sidecar artifacts that were created
+                        artifact_extensions = []
+                        
+                        # Resolve the base path used for sidecar files
+                        base_path = resolve_output_base_path(
+                            output_directory, 
+                            build_output_filename(self.config, metadata, video_url),
+                            metadata
+                        )
+                        
+                        # Check for .info.json (yt-dlp metadata sidecar)
+                        if base_path.with_suffix(".info.json").exists():
+                            artifact_extensions.append(".info.json")
+                        
+                        # Check for .metadata.json (project-owned full metadata)
+                        if base_path.with_suffix(".metadata.json").exists():
+                            artifact_extensions.append(".metadata.json")
+                        
+                        # Add .nfo if created
                         if nfo_created:
+                            artifact_extensions.append(".nfo")
+                        
+                        # Emit single line with all artifacts
+                        if artifact_extensions:
                             emit_rendered(
-                                self.formatter.artifact_complete(title, ".nfo")
+                                self.formatter.artifact_complete(
+                                    title, ", ".join(artifact_extensions)
+                                )
                             )
                     else:
                         logger.info(
