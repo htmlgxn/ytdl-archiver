@@ -375,6 +375,310 @@ def metadata_backfill(
         sys.exit(1)
 
 
+def _rel(path_str: str, *bases: Path) -> str:
+    p = Path(path_str)
+    for base in bases:
+        try:
+            return str(p.relative_to(base))
+        except ValueError:
+            pass
+    return path_str
+
+
+def _format_size(size_bytes: int | None) -> str:
+    """Format bytes as compact mb string."""
+    if size_bytes is None:
+        return ""
+    return f"-{size_bytes / (1024 * 1024):.2f}mb"
+
+
+def _file_ext(name: str) -> str:
+    """Return multi-part extension (e.g. '.info.json', '.en.srt')."""
+    lower = name.lower()
+    for multi in (".info.json", ".metadata.json"):
+        if lower.endswith(multi):
+            return name[len(name) - len(multi):]
+    p = Path(name)
+    if len(p.suffixes) >= 2:
+        from ytdl_archiver.core.dedupe import _SUBTITLE_EXTENSIONS, _LANGUAGE_TOKEN_RE
+        if p.suffixes[-1].lower() in _SUBTITLE_EXTENSIONS and _LANGUAGE_TOKEN_RE.fullmatch(p.suffixes[-2]):
+            return p.suffixes[-2] + p.suffixes[-1]
+    return p.suffix
+
+
+def _file_stem(name: str) -> str:
+    """Return stem by stripping multi-part extension."""
+    ext = _file_ext(name)
+    return name[: len(name) - len(ext)] if ext else name
+
+
+def _render_dedupe_details(
+    details: list[dict],
+    source_dir: Path,
+    archive_dir: Path,
+    *,
+    mode: str,
+) -> list[str]:
+    _OP_PRIORITY = {
+        "replace_file": 0,
+        "import_file": 1,
+        "copy_file": 2,
+        "trash_file": 3,
+        "delete_file": 4,
+        "skip_file": 5,
+    }
+
+    lines: list[str] = []
+    first = True
+
+    for detail in details:
+        if not first:
+            lines.append("---")
+        first = False
+
+        ops = detail.get("operations", [])
+        match_key = detail.get("match_key", "")
+
+        # Step 1 — classify operations
+        source_files: dict[str, dict] = {}
+        archive_kept: list[dict] = []
+        archive_imported: list[dict] = []
+        archive_removed: list[dict] = []
+        # Track target paths that appear in kept/imported to avoid duplication
+        arc_kept_targets: set[str] = set()
+
+        for op in ops:
+            kind = op.get("kind", "")
+            origin = op.get("origin", "")
+            sp = op.get("source_path", "")
+            tp = op.get("target_path", "")
+
+            if kind in ("rename_file", "block_file"):
+                continue
+
+            if origin == "source":
+                # replace_file from source = winner going INTO archive
+                if kind == "replace_file":
+                    archive_kept.append(op)
+                    if tp:
+                        arc_kept_targets.add(tp)
+                    # Also record in source_files for SRC display
+                    if sp and sp not in source_files:
+                        source_files[sp] = op
+                    elif sp and sp in source_files:
+                        existing = source_files[sp]
+                        if _OP_PRIORITY.get(kind, 99) < _OP_PRIORITY.get(existing.get("kind", ""), 99):
+                            source_files[sp] = op
+                elif kind == "copy_file":
+                    # Sidecar donated from source to archive
+                    archive_imported.append(op)
+                    if tp:
+                        arc_kept_targets.add(tp)
+                    # Also in source_files for SRC display
+                    if sp and sp not in source_files:
+                        source_files[sp] = op
+                    elif sp and sp in source_files:
+                        existing = source_files[sp]
+                        if _OP_PRIORITY.get(kind, 99) < _OP_PRIORITY.get(existing.get("kind", ""), 99):
+                            source_files[sp] = op
+                else:
+                    if sp and sp not in source_files:
+                        source_files[sp] = op
+                    elif sp and sp in source_files:
+                        existing = source_files[sp]
+                        if _OP_PRIORITY.get(kind, 99) < _OP_PRIORITY.get(existing.get("kind", ""), 99):
+                            source_files[sp] = op
+            elif origin == "archive":
+                if kind == "keep_file":
+                    archive_kept.append(op)
+                    if sp:
+                        arc_kept_targets.add(sp)
+                elif kind == "copy_file":
+                    # Archive sidecar restored (e.g. from staged_archive)
+                    archive_kept.append(op)
+                    if tp:
+                        arc_kept_targets.add(tp)
+                elif kind in ("trash_file", "delete_file"):
+                    archive_removed.append(op)
+                elif kind == "skip_file":
+                    archive_kept.append(op)
+                    if sp:
+                        arc_kept_targets.add(sp)
+
+        # Filter removed: exclude files whose target path is in kept/imported
+        # (staged_archive files that were restored then disposed)
+        archive_removed = [
+            op for op in archive_removed
+            if op.get("source_path", "") not in arc_kept_targets
+        ]
+
+        # Step 3 — VIDEO header
+        lines.append(f"VIDEO: {match_key}")
+
+        # Step 4 — SRC blocks
+        src_by_dir: dict[str, list[tuple[str, dict]]] = {}
+        for sp, op in source_files.items():
+            p = Path(sp)
+            parent = str(p.parent)
+            src_by_dir.setdefault(parent, []).append((sp, op))
+
+        for dir_path, file_ops in src_by_dir.items():
+            rel_dir = _rel(dir_path, source_dir)
+            lines.append(f"  SRC({rel_dir}) -> {mode}")
+
+            # Group by stem
+            stem_groups: dict[str, list[tuple[str, dict]]] = {}
+            for sp, op in file_ops:
+                name = Path(sp).name
+                stem = _file_stem(name)
+                stem_groups.setdefault(stem, []).append((sp, op))
+
+            for stem, stem_ops_list in stem_groups.items():
+                ext_parts: list[str] = []
+                for sp, op in sorted(stem_ops_list, key=lambda x: Path(x[0]).name):
+                    name = Path(sp).name
+                    ext = _file_ext(name)
+                    size = op.get("file_size_bytes")
+                    kind = op.get("kind", "")
+                    reason = op.get("reason", "")
+
+                    ext_str = ext + _format_size(size) if _artifact_is_media(ext) else ext
+
+                    if kind == "skip_file" and "already" in reason.lower():
+                        ext_str += " [IGNORED -- archive exists]"
+
+                    ext_parts.append(ext_str)
+
+                lines.append(f"    {stem}  ({','.join(ext_parts)})")
+
+        # Step 5 — ARC block
+        renamed_to = detail.get("renamed_to")
+        archive_dest = detail.get("archive_destination", "")
+        blocked_canonical = detail.get("canonical_stem", "")
+        rename_blocked = detail.get("rename_blocked", False)
+
+        if renamed_to:
+            canonical_path = Path(renamed_to)
+        elif archive_dest:
+            canonical_path = Path(archive_dest)
+        else:
+            canonical_path = None
+
+        if canonical_path:
+            arc_dir = str(canonical_path.parent)
+            # Use the canonical stem for display even if blocked
+            if rename_blocked and blocked_canonical:
+                canonical_stem = blocked_canonical
+                final_tag = f"FINAL:{canonical_stem} [BLOCKED]"
+            elif renamed_to:
+                canonical_stem = canonical_path.name
+                final_tag = f"FINAL:{canonical_stem}"
+            else:
+                canonical_stem = canonical_path.name
+                final_tag = f"FINAL:{canonical_stem}"
+
+            rel_arc_dir = _rel(arc_dir, archive_dir)
+            lines.append(f"  ARC({rel_arc_dir}) -> {final_tag}")
+
+            # Determine winner info
+            has_rename = renamed_to and renamed_to != archive_dest
+
+            # kept sub-section
+            if archive_kept:
+                lines.append("    kept:")
+                kept_by_stem: dict[str, list[tuple[str, dict]]] = {}
+                for op in archive_kept:
+                    kind = op.get("kind", "")
+                    # For replace/copy ops, use target_path (archive destination)
+                    # For keep/skip ops, use source_path (already in archive)
+                    if kind in ("replace_file", "copy_file"):
+                        display_path = op.get("target_path") or op.get("source_path") or ""
+                    else:
+                        display_path = op.get("source_path") or op.get("target_path") or ""
+                    if not display_path:
+                        continue
+                    name = Path(display_path).name
+                    stem = _file_stem(name)
+                    kept_by_stem.setdefault(stem, []).append((display_path, op))
+
+                for stem, kept_ops in kept_by_stem.items():
+                    media_exts: list[str] = []
+                    other_exts: list[str] = []
+                    for sp, op in sorted(kept_ops, key=lambda x: Path(x[0]).name):
+                        name = Path(sp).name
+                        ext = _file_ext(name)
+                        size = op.get("file_size_bytes")
+                        kind = op.get("kind", "")
+                        ext_str = ext + _format_size(size) if _artifact_is_media(ext) else ext
+                        if kind in ("replace_file", "keep_file") and _artifact_is_media(ext):
+                            tag = " [WINNER]"
+                            if has_rename:
+                                tag += " -> renamed"
+                            media_exts.append(ext_str + tag)
+                        else:
+                            other_exts.append(ext_str)
+                    if media_exts:
+                        lines.append(f"      {stem}  ({','.join(media_exts)})")
+                    if other_exts:
+                        lines.append(f"      {stem}  ({','.join(other_exts)})")
+
+            # imported sub-section
+            if archive_imported:
+                lines.append("    imported:")
+                imp_by_stem: dict[str, list[tuple[str, dict]]] = {}
+                for op in archive_imported:
+                    # Use target_path (archive destination) for display
+                    display_path = op.get("target_path") or op.get("source_path") or ""
+                    if not display_path:
+                        continue
+                    name = Path(display_path).name
+                    stem = _file_stem(name)
+                    imp_by_stem.setdefault(stem, []).append((display_path, op))
+
+                for stem, imp_ops in imp_by_stem.items():
+                    ext_parts = []
+                    for sp, op in sorted(imp_ops, key=lambda x: Path(x[0]).name):
+                        name = Path(sp).name
+                        ext = _file_ext(name)
+                        size = op.get("file_size_bytes")
+                        ext_str = ext + _format_size(size) if _artifact_is_media(ext) else ext
+                        ext_parts.append(ext_str)
+                    lines.append(f"      {stem}  ({','.join(ext_parts)})")
+
+            # removed sub-section
+            if archive_removed:
+                lines.append("    removed:")
+                rem_by_stem: dict[str, list[tuple[str, dict]]] = {}
+                for op in archive_removed:
+                    sp = op.get("source_path", "")
+                    if not sp:
+                        continue
+                    name = Path(sp).name
+                    stem = _file_stem(name)
+                    rem_by_stem.setdefault(stem, []).append((sp, op))
+
+                for stem, rem_ops in rem_by_stem.items():
+                    ext_parts = []
+                    for sp, op in sorted(rem_ops, key=lambda x: Path(x[0]).name):
+                        name = Path(sp).name
+                        ext = _file_ext(name)
+                        size = op.get("file_size_bytes")
+                        reason = op.get("reason", "")
+                        ext_str = ext + _format_size(size) if _artifact_is_media(ext) else ext
+                        if "duplicate archive copy not selected" in reason:
+                            ext_str += " [DUPLICATE]"
+                        ext_parts.append(ext_str)
+                    lines.append(f"      {stem}  ({','.join(ext_parts)})")
+
+    return lines
+
+
+def _artifact_is_media(ext: str) -> bool:
+    """Check if extension is a media type that should show size."""
+    from ytdl_archiver.core.dedupe import _MEDIA_EXTENSIONS
+    return ext.lower() in _MEDIA_EXTENSIONS
+
+
 @cli.command(name="dedupe")
 @click.argument("source_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
 @click.argument(
@@ -424,6 +728,15 @@ def dedupe_cmd(
         emit_rendered(formatter.archive_directory(str(effective_dir2)))
         emit_rendered(f"Source directory: {effective_dir1}")
 
+        mode_label = "TRASH" if trash_dir else "DELETE"
+        dry_label = "T" if dry_run else "F"
+        emit_rendered(f"START DEDUPE | MODE:{mode_label} DRY:{dry_label}")
+        tokens = config.get("filename.tokens", ["upload_date", "title", "channel"])
+        sep = config.get("filename.token_joiner", "_")
+        date_fmt = config.get("filename.date_format", "yyyymmdd")
+        emit_rendered(f"CFG tokens=[{','.join(str(t) for t in tokens)}] sep=\"{sep}\" date={date_fmt}")
+        emit_rendered("")
+
         summary = run_dedupe(
             effective_dir1,
             effective_dir2,
@@ -434,35 +747,19 @@ def dedupe_cmd(
             config=config,
         )
 
-        if dry_run:
-            emit_rendered("Dry run: no files were modified.")
+        for line in _render_dedupe_details(
+            summary["details"], effective_dir1, effective_dir2, mode=mode_label
+        ):
+            emit_rendered(line)
 
-        for detail in summary["details"]:
-            emit_rendered(f"{detail['action']}: {detail['match_method']}={detail['match_key']}")
-            for operation in detail["operations"]:
-                kind = str(operation["kind"]).upper().replace("_FILE", "")
-                origin = str(operation["origin"]).upper()
-                source_path = operation.get("source_path") or ""
-                target_path = operation.get("target_path") or ""
-                reason = operation.get("reason") or ""
-                if target_path:
-                    emit_rendered(
-                        f"  {kind:<8} {origin:<7} {source_path} -> {target_path} ({reason})"
-                    )
-                else:
-                    emit_rendered(
-                        f"  {kind:<8} {origin:<7} {source_path} ({reason})"
-                    )
-
+        disposed = summary.get("source_groups_disposed", 0) + summary.get("archive_groups_disposed", 0)
         emit_rendered(
-            "Dedupe complete. "
-            f"processed: {summary['processed_sets']}, "
-            f"imported: {summary['imported_sets']}, "
-            f"replaced: {summary['replaced_sets']}, "
-            f"merged: {summary['merged_sets']}, "
-            f"sidecars copied: {summary['sidecars_copied']}, "
-            f"archive renames: {summary['archive_winners_renamed']}"
+            f"SUMMARY processed={summary['processed_sets']} "
+            f"replaced={summary['replaced_sets']} "
+            f"renamed={summary['archive_winners_renamed']} "
+            f"{mode_label.lower()}={disposed}"
         )
+        emit_rendered("DONE")
 
     except KeyboardInterrupt:
         if formatter:

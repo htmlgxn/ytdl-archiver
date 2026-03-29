@@ -258,6 +258,7 @@ base_directory = "{temp_dir}/downloads"
             mock_config = Mock()
             mock_config.as_dict.return_value = {"logging": {"level": "INFO"}}
             mock_config.migrate_playlists_from_cwd.return_value = None
+            mock_config.get.side_effect = lambda key, default=None: default
             mock_config_class.return_value = mock_config
             mock_run_dedupe.return_value = {
                 "processed_sets": 1,
@@ -266,6 +267,8 @@ base_directory = "{temp_dir}/downloads"
                 "merged_sets": 0,
                 "sidecars_copied": 0,
                 "archive_winners_renamed": 1,
+                "source_groups_disposed": 0,
+                "archive_groups_disposed": 0,
                 "details": [],
             }
 
@@ -309,6 +312,7 @@ base_directory = "{temp_dir}/downloads"
             mock_config.as_dict.return_value = {"logging": {"level": "INFO"}}
             mock_config.migrate_playlists_from_cwd.return_value = None
             mock_config.get_archive_directory.return_value = archive_dir
+            mock_config.get.side_effect = lambda key, default=None: default
             mock_config_class.return_value = mock_config
             mock_run_dedupe.return_value = {
                 "processed_sets": 0,
@@ -317,6 +321,8 @@ base_directory = "{temp_dir}/downloads"
                 "merged_sets": 0,
                 "sidecars_copied": 0,
                 "archive_winners_renamed": 0,
+                "source_groups_disposed": 0,
+                "archive_groups_disposed": 0,
                 "details": [],
             }
 
@@ -414,6 +420,7 @@ base_directory = "{temp_dir}/downloads"
             mock_config = Mock()
             mock_config.as_dict.return_value = {"logging": {"level": "INFO"}}
             mock_config.migrate_playlists_from_cwd.return_value = None
+            mock_config.get.side_effect = lambda key, default=None: default
             mock_config_class.return_value = mock_config
             mock_run_dedupe.return_value = {
                 "processed_sets": 1,
@@ -422,6 +429,8 @@ base_directory = "{temp_dir}/downloads"
                 "merged_sets": 0,
                 "sidecars_copied": 0,
                 "archive_winners_renamed": 1,
+                "source_groups_disposed": 0,
+                "archive_groups_disposed": 0,
                 "details": [
                     {
                         "action": "import",
@@ -440,6 +449,7 @@ base_directory = "{temp_dir}/downloads"
                                 "origin": "source",
                                 "reason": "source-only video imported into archive",
                                 "status": "planned",
+                                "file_size_bytes": None,
                             },
                             {
                                 "kind": "rename_file",
@@ -448,6 +458,7 @@ base_directory = "{temp_dir}/downloads"
                                 "origin": "archive",
                                 "reason": "canonical filename from config and metadata",
                                 "status": "planned",
+                                "file_size_bytes": None,
                             },
                         ],
                     }
@@ -468,15 +479,11 @@ base_directory = "{temp_dir}/downloads"
             )
 
             assert result.exit_code == 0
-            assert "import: video_id=abc123" in result.output
-            assert (
-                f"IMPORT   SOURCE  {source_dir / 'legacy.mp4'} -> {archive_dir / 'legacy.mp4'}"
-                in result.output
-            )
-            assert (
-                f"RENAME   ARCHIVE {archive_dir / 'legacy'} -> {archive_dir / 'canonical-video_channel'}"
-                in result.output
-            )
+            assert "VIDEO:" in result.output
+            assert "abc123" in result.output
+            assert "FINAL:" in result.output or "canonical-video_channel" in result.output
+            assert "START DEDUPE" in result.output
+            assert "DONE" in result.output
 
     @patch("ytdl_archiver.cli.run_dedupe")
     @patch("ytdl_archiver.cli.Config")
@@ -494,6 +501,7 @@ base_directory = "{temp_dir}/downloads"
             mock_config = Mock()
             mock_config.as_dict.return_value = {"logging": {"level": "INFO"}}
             mock_config.migrate_playlists_from_cwd.return_value = None
+            mock_config.get.side_effect = lambda key, default=None: default
             mock_config_class.return_value = mock_config
             mock_run_dedupe.return_value = {
                 "processed_sets": 1,
@@ -502,6 +510,8 @@ base_directory = "{temp_dir}/downloads"
                 "merged_sets": 0,
                 "sidecars_copied": 0,
                 "archive_winners_renamed": 1,
+                "source_groups_disposed": 0,
+                "archive_groups_disposed": 0,
                 "details": [
                     {
                         "action": "import",
@@ -524,6 +534,7 @@ base_directory = "{temp_dir}/downloads"
                                 "origin": "archive",
                                 "reason": "canonical filename from config and metadata",
                                 "status": "planned",
+                                "file_size_bytes": None,
                             }
                         ],
                     }
@@ -544,11 +555,10 @@ base_directory = "{temp_dir}/downloads"
             )
 
             assert result.exit_code == 0
-            assert "import: filename=legacy-video" in result.output
-            assert (
-                f"RENAME   ARCHIVE {archive_dir / 'legacy-video'} -> "
-                f"{archive_dir / '20250131_imported-video_source-channel'}"
-            ) in result.output
+            assert "VIDEO:" in result.output
+            assert "legacy-video" in result.output
+            assert "20250131_imported-video_source-channel" in result.output
+            assert "DONE" in result.output
 
     @patch("ytdl_archiver.cli.BrowserCookieRefresher")
     @patch("ytdl_archiver.cli.PlaylistArchiver")

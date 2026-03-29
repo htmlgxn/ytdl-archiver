@@ -670,3 +670,340 @@ class TestDedupe:
         assert summary["archive_groups_disposed"] == 1
         assert (trash_dir / "source" / "Incoming" / "Channel" / "source-copy.mp4").exists()
         assert (trash_dir / "archive" / "Playlists" / "Duplicate" / "duplicate.mp4").exists()
+
+    def test_run_dedupe_cross_bucket_filename_fallback_matching(self, config, temp_dir: Path):
+        """Source .nfo gives video_id 'A', archive .info.json gives video_id 'B',
+        but they share the same filename stem and should match via fallback."""
+        source_dir = temp_dir / "source"
+        archive_dir = temp_dir / "archive"
+        source_leaf = source_dir / "Imports" / "Channel"
+        archive_leaf = archive_dir / "Imports" / "Channel"
+        config._config["filename"]["tokens"] = ["upload_date", "title", "channel"]
+        config._config["filename"]["date_format"] = "yyyymmdd"
+
+        _write_bytes(source_leaf / "20231018_video-title_channel.mp4", 5)
+        (source_leaf / "20231018_video-title_channel.jpg").write_text("thumb", encoding="utf-8")
+        _write_nfo(
+            source_leaf / "20231018_video-title_channel.nfo",
+            video_id="SOURCE_ID_A",
+            title="Video Title",
+            showtitle="Channel",
+            releasedate="2023-10-18",
+        )
+
+        _write_bytes(archive_leaf / "20231018_video-title_channel.mp4", 15)
+        _write_info_json(
+            archive_leaf / "20231018_video-title_channel.info.json",
+            video_id="ARCHIVE_ID_B",
+            title="Video Title",
+            uploader="Channel",
+        )
+        _write_metadata_json(
+            archive_leaf / "20231018_video-title_channel.metadata.json",
+            video_id="ARCHIVE_ID_B",
+            title="Video Title",
+            uploader="Channel",
+        )
+
+        summary = run_dedupe(
+            source_dir,
+            archive_dir,
+            trash_dir=None,
+            delete=True,
+            dry_run=False,
+            verbose=True,
+            config=config,
+        )
+
+        # They should match and merge, not import separately
+        assert summary["imported_sets"] == 0
+        assert summary["merged_sets"] == 1 or summary["replaced_sets"] == 1
+        # Archive should have ONE copy with all sidecars (canonical stem uses archive metadata date)
+        canonical_stem = "20250131_video-title_channel"
+        assert (archive_leaf / f"{canonical_stem}.mp4").exists()
+        assert (archive_leaf / f"{canonical_stem}.info.json").exists()
+        assert (archive_leaf / f"{canonical_stem}.nfo").exists()
+        assert (archive_leaf / f"{canonical_stem}.jpg").exists()
+        # Source should be cleaned up
+        assert not (source_leaf / "20231018_video-title_channel.mp4").exists()
+        assert not (source_leaf / "20231018_video-title_channel.jpg").exists()
+        assert not (source_leaf / "20231018_video-title_channel.nfo").exists()
+        # No __dedupe_1 files
+        dedupe_files = list(archive_leaf.glob("*__dedupe_*"))
+        assert dedupe_files == []
+
+    def test_run_dedupe_consolidates_undated_archive_duplicates(self, config, temp_dir: Path):
+        """Archive has both dated and undated stems for the same video.
+        The undated copy should be treated as extra_archive and disposed."""
+        source_dir = temp_dir / "source"
+        archive_dir = temp_dir / "archive"
+        source_leaf = source_dir / "Imports" / "Channel"
+        archive_leaf = archive_dir / "Imports" / "Channel"
+        config._config["filename"]["tokens"] = ["upload_date", "title", "channel"]
+        config._config["filename"]["date_format"] = "yyyymmdd"
+
+        _write_bytes(source_leaf / "20231018_video-title_channel.mp4", 5)
+        _write_nfo(
+            source_leaf / "20231018_video-title_channel.nfo",
+            video_id="SOURCE_ID_A",
+            title="Video Title",
+            showtitle="Channel",
+            releasedate="2023-10-18",
+        )
+
+        # Dated archive with metadata
+        _write_bytes(archive_leaf / "20231018_video-title_channel.mp4", 15)
+        _write_info_json(
+            archive_leaf / "20231018_video-title_channel.info.json",
+            video_id="ARCHIVE_ID_B",
+            title="Video Title",
+            uploader="Channel",
+        )
+        _write_metadata_json(
+            archive_leaf / "20231018_video-title_channel.metadata.json",
+            video_id="ARCHIVE_ID_B",
+            title="Video Title",
+            uploader="Channel",
+        )
+        (archive_leaf / "20231018_video-title_channel.nfo").write_text(
+            "<movie><uniqueid type=\"youtube\">ARCHIVE_ID_B</uniqueid></movie>",
+            encoding="utf-8",
+        )
+
+        # Undated archive copy (same video, no metadata → different match key)
+        _write_bytes(archive_leaf / "video-title_channel.mp4", 10)
+        (archive_leaf / "video-title_channel.jpg").write_text("thumb", encoding="utf-8")
+
+        summary = run_dedupe(
+            source_dir,
+            archive_dir,
+            trash_dir=None,
+            delete=True,
+            dry_run=False,
+            verbose=True,
+            config=config,
+        )
+
+        # Undated archive copy should be disposed as extra_archive
+        assert summary["archive_groups_disposed"] >= 1
+        # Archive should have exactly one set of files (renamed to canonical)
+        mp4_files = list(archive_leaf.glob("*.mp4"))
+        assert len(mp4_files) == 1, f"Expected 1 mp4, got {[f.name for f in mp4_files]}"
+        # Undated files should be gone
+        assert not (archive_leaf / "video-title_channel.mp4").exists()
+        assert not (archive_leaf / "video-title_channel.jpg").exists()
+        # Source should be cleaned up
+        assert not (source_leaf / "20231018_video-title_channel.mp4").exists()
+        # No __dedupe_1 files
+        dedupe_files = list(archive_leaf.glob("*__dedupe_*"))
+        assert dedupe_files == []
+
+    def test_run_dedupe_disposes_best_source_non_video_files_in_replace_path(
+        self, config, temp_dir: Path
+    ):
+        """When source replaces archive video, source's non-video files (jpg, nfo)
+        should also be disposed after merge, not left behind."""
+        source_dir = temp_dir / "source"
+        archive_dir = temp_dir / "archive"
+        source_leaf = source_dir / "Incoming" / "Channel"
+        archive_leaf = archive_dir / "Playlists" / "Named"
+        config._config["filename"]["tokens"] = ["title", "channel"]
+
+        _write_bytes(source_leaf / "source-copy.mp4", 2000)
+        _write_info_json(
+            source_leaf / "source-copy.info.json",
+            video_id="abc123",
+            title="Canonical Video",
+            uploader="Archive Channel",
+        )
+        (source_leaf / "source-copy.jpg").write_text("thumb", encoding="utf-8")
+        (source_leaf / "source-copy.nfo").write_text(
+            "<movie><uniqueid type=\"youtube\">abc123</uniqueid></movie>",
+            encoding="utf-8",
+        )
+
+        _write_bytes(archive_leaf / "old-archive.mp4", 5)
+        _write_metadata_json(
+            archive_leaf / "old-archive.metadata.json",
+            video_id="abc123",
+            title="Canonical Video",
+            uploader="Archive Channel",
+        )
+
+        summary = run_dedupe(
+            source_dir,
+            archive_dir,
+            trash_dir=None,
+            delete=True,
+            dry_run=False,
+            verbose=True,
+            config=config,
+        )
+
+        final_stem = "canonical-video_archive-channel"
+        assert summary["replaced_sets"] == 1
+        # Source video and non-video files should all be gone
+        assert not (source_leaf / "source-copy.mp4").exists()
+        assert not (source_leaf / "source-copy.jpg").exists()
+        assert not (source_leaf / "source-copy.nfo").exists()
+        assert not (source_leaf / "source-copy.info.json").exists()
+        # Archive should have the merged result
+        assert (archive_leaf / f"{final_stem}.mp4").exists()
+        assert (archive_leaf / f"{final_stem}.jpg").exists()
+        assert (archive_leaf / f"{final_stem}.nfo").exists()
+
+    def test_run_dedupe_dry_run_rename_not_blocked_by_disposed_files(
+        self, config, temp_dir: Path
+    ):
+        """In dry_run, disposed files aren't actually deleted. Rename should
+        still succeed because we skip filesystem checks in dry_run mode."""
+        source_dir = temp_dir / "source"
+        archive_dir = temp_dir / "archive"
+        source_leaf = source_dir / "Imports" / "Channel"
+        archive_leaf = archive_dir / "Imports" / "Channel"
+        config._config["filename"]["tokens"] = ["upload_date", "title", "channel"]
+        config._config["filename"]["date_format"] = "yyyymmdd"
+
+        _write_bytes(source_leaf / "legacy.mp4", 5)
+        _write_nfo(
+            source_leaf / "legacy.nfo",
+            video_id="abc123",
+            title="Video Title",
+            showtitle="Channel",
+            releasedate="2023-10-18",
+        )
+
+        # Archive with undated stem that would block rename to dated canonical
+        _write_bytes(archive_leaf / "video-title_channel.mp4", 15)
+        _write_info_json(
+            archive_leaf / "video-title_channel.info.json",
+            video_id="abc123",
+            title="Video Title",
+            uploader="Channel",
+        )
+
+        summary = run_dedupe(
+            source_dir,
+            archive_dir,
+            trash_dir=None,
+            delete=True,
+            dry_run=True,
+            verbose=True,
+            config=config,
+        )
+
+        # Should rename to canonical (not be blocked)
+        assert summary["archive_winners_renamed"] == 1
+        assert summary["rename_blocked_sets"] == 0
+
+    def test_part_files_ignored_entirely(self, config, temp_dir: Path):
+        """Incomplete .part downloads should not be treated as video groups."""
+        source_dir = temp_dir / "source"
+        archive_dir = temp_dir / "archive"
+        source_leaf = source_dir / "Imports" / "Channel"
+        archive_dir.mkdir()
+
+        (source_leaf).mkdir(parents=True)
+        (source_leaf / "video.live_chat.json.part").write_text("partial", encoding="utf-8")
+        (source_leaf / "video.live_chat.json.part-Frag0.part").write_text("frag", encoding="utf-8")
+
+        groups = scan_directory(source_dir)
+        assert len(groups) == 0
+
+    def test_apostrophe_normalization_matches_variants(self, config, temp_dir: Path):
+        """there's and theres should match via normalized filename."""
+        source_dir = temp_dir / "source"
+        archive_dir = temp_dir / "archive"
+        source_leaf = source_dir / "Imports" / "Channel"
+        archive_leaf = archive_dir / "Imports" / "Channel"
+        config._config["filename"]["tokens"] = ["title", "channel"]
+
+        _write_bytes(source_leaf / "there's-a-problem_channel.mp4", 5)
+        _write_bytes(archive_leaf / "theres-a-problem_channel.mp4", 15)
+
+        summary = run_dedupe(
+            source_dir,
+            archive_dir,
+            trash_dir=None,
+            delete=True,
+            dry_run=False,
+            verbose=True,
+            config=config,
+        )
+
+        assert summary["imported_sets"] == 0
+        assert summary["merged_sets"] == 1
+
+    def test_archive_only_undated_duplicates_consolidated(self, config, temp_dir: Path):
+        """Undated archive duplicates should be disposed even without any source trigger."""
+        source_dir = temp_dir / "source"
+        archive_dir = temp_dir / "archive"
+        archive_leaf = archive_dir / "Channel"
+        source_dir.mkdir(parents=True)
+        config._config["filename"]["tokens"] = ["upload_date", "title", "channel"]
+        config._config["filename"]["date_format"] = "yyyymmdd"
+
+        # Dated archive copy with metadata
+        _write_bytes(archive_leaf / "20231018_video-title_channel.mp4", 15)
+        _write_info_json(
+            archive_leaf / "20231018_video-title_channel.info.json",
+            video_id="abc123",
+            title="Video Title",
+            uploader="Channel",
+        )
+
+        # Undated archive copy (no metadata)
+        _write_bytes(archive_leaf / "video-title_channel.mp4", 10)
+        (archive_leaf / "video-title_channel.jpg").write_text("thumb", encoding="utf-8")
+
+        summary = run_dedupe(
+            source_dir,
+            archive_dir,
+            trash_dir=None,
+            delete=True,
+            dry_run=False,
+            verbose=True,
+            config=config,
+        )
+
+        # Undated copy should be disposed
+        assert summary["archive_groups_disposed"] >= 1
+        assert not (archive_leaf / "video-title_channel.mp4").exists()
+        assert not (archive_leaf / "video-title_channel.jpg").exists()
+        # Dated copy should remain (possibly renamed to canonical)
+        mp4_files = list(archive_leaf.glob("*.mp4"))
+        assert len(mp4_files) == 1
+
+    def test_live_chat_json_imported_to_live_chats_subdir(self, config, temp_dir: Path):
+        """Live chat json files should be moved to live-chats/ subdirectory."""
+        source_dir = temp_dir / "source"
+        archive_dir = temp_dir / "archive"
+        source_leaf = source_dir / "Imports" / "Channel"
+        archive_dir.mkdir()
+        config._config["filename"]["tokens"] = ["upload_date", "title", "channel"]
+        config._config["filename"]["date_format"] = "yyyymmdd"
+
+        _write_bytes(source_leaf / "legacy.mp4", 8)
+        _write_info_json(
+            source_leaf / "legacy.info.json",
+            video_id="abc123",
+            title="Video Title",
+            uploader="Channel",
+        )
+        (source_leaf / "legacy.live_chat.json").write_text('{"chat": []}', encoding="utf-8")
+
+        summary = run_dedupe(
+            source_dir,
+            archive_dir,
+            trash_dir=None,
+            delete=True,
+            dry_run=False,
+            verbose=True,
+            config=config,
+        )
+
+        assert summary["imported_sets"] == 1
+        final_stem = "20250131_video-title_channel"
+        archive_leaf = archive_dir / "Imports" / "Channel"
+        assert (archive_leaf / f"{final_stem}.mp4").exists()
+        assert (archive_leaf / "live-chats" / f"{final_stem}.live_chat.json").exists()

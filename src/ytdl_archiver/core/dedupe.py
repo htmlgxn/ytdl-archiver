@@ -70,6 +70,7 @@ class DedupeOperation:
     origin: str
     reason: str
     status: str
+    file_size_bytes: int | None = None
 
 
 def _strip_known_suffix(name: str) -> str | None:
@@ -77,10 +78,17 @@ def _strip_known_suffix(name: str) -> str | None:
     if lower_name in {"tvshow.nfo", ".archive.txt"} or name.startswith("."):
         return None
 
+    # Incomplete downloads — ignore entirely
+    if lower_name.endswith(".part"):
+        return None
+
+    # Compound extensions with known stems
     if lower_name.endswith(".metadata.json"):
         return name[: -len(".metadata.json")]
     if lower_name.endswith(".info.json"):
         return name[: -len(".info.json")]
+    if lower_name.endswith(".live_chat.json"):
+        return name[: -len(".live_chat.json")]
 
     path = Path(name)
     suffixes = path.suffixes
@@ -98,8 +106,13 @@ def _strip_known_suffix(name: str) -> str | None:
     return path.stem
 
 
+_APOSTROPHE_RE = re.compile(r"['\u2019\u2018]")
+
+
 def _normalize_fallback_stem(stem: str) -> str:
     normalized = _DATE_PREFIX_RE.sub("", stem.strip().lower())
+    # Strip apostrophes so "there's" matches "theres"
+    normalized = _APOSTROPHE_RE.sub("", normalized)
     normalized = _NON_ALNUM_RE.sub("-", normalized)
     return normalized.strip("-")
 
@@ -291,6 +304,14 @@ def select_best_source(groups: list[StemGroup]) -> StemGroup:
     return sorted(groups, key=_group_sort_key)[0]
 
 
+def _largest_video_size(group: StemGroup) -> int:
+    """Return byte size of the largest video file in the group."""
+    return max(
+        (path.stat().st_size for path in group.files if _artifact_category(path) == "video" and path.exists()),
+        default=0,
+    )
+
+
 def _suffix_fragment(path: Path, stem: str) -> str:
     return path.name[len(stem) :]
 
@@ -319,8 +340,12 @@ def _is_metadata_sidecar(path: Path) -> bool:
     )
 
 
+def _is_live_chat(path: Path) -> bool:
+    return path.name.lower().endswith(".live_chat.json")
+
+
 def _is_source_import_artifact(path: Path) -> bool:
-    return _is_importable_artifact(path) or _is_metadata_sidecar(path)
+    return _is_importable_artifact(path) or _is_metadata_sidecar(path) or _is_live_chat(path)
 
 
 def _category_key(path: Path, stem: str) -> str | None:
@@ -337,7 +362,7 @@ def _refresh_group_files(group: StemGroup) -> None:
     group.total_size = sum(path.stat().st_size for path in group.files if path.exists())
 
 
-def _operation_dict(operation: DedupeOperation) -> dict[str, str | None]:
+def _operation_dict(operation: DedupeOperation) -> dict[str, str | int | None]:
     return {
         "kind": operation.kind,
         "source_path": operation.source_path,
@@ -345,6 +370,7 @@ def _operation_dict(operation: DedupeOperation) -> dict[str, str | None]:
         "origin": operation.origin,
         "reason": operation.reason,
         "status": operation.status,
+        "file_size_bytes": operation.file_size_bytes,
     }
 
 
@@ -381,6 +407,7 @@ def _describe_source_skips(
                 origin="source",
                 reason=reason,
                 status="skipped",
+                file_size_bytes=path.stat().st_size if path.exists() else None,
             )
         )
     return skipped
@@ -391,6 +418,7 @@ def merge_missing_sidecars(
     donor: StemGroup,
     *,
     dry_run: bool,
+    donor_origin: str = "source",
 ) -> list[DedupeOperation]:
     """Copy donor importable artifacts that are absent from the target stem."""
     operations: list[DedupeOperation] = []
@@ -402,6 +430,9 @@ def merge_missing_sidecars(
     for path in sorted(donor.files):
         if not path.exists():
             continue
+        # Never merge video files — videos are handled by the keep/replace logic
+        if _artifact_category(path) == "video":
+            continue
         key = _category_key(path, donor.stem)
         if key is None:
             continue
@@ -411,9 +442,10 @@ def merge_missing_sidecars(
                     kind="skip_file",
                     source_path=str(path),
                     target_path=None,
-                    origin="source",
+                    origin=donor_origin,
                     reason="archive already has that artifact slot",
                     status="skipped",
+                    file_size_bytes=path.stat().st_size if path.exists() else None,
                 )
             )
             continue
@@ -424,9 +456,10 @@ def merge_missing_sidecars(
                     kind="skip_file",
                     source_path=str(path),
                     target_path=str(target_path),
-                    origin="source",
+                    origin=donor_origin,
                     reason="target path already exists",
                     status="blocked",
+                    file_size_bytes=path.stat().st_size if path.exists() else None,
                 )
             )
             continue
@@ -435,9 +468,10 @@ def merge_missing_sidecars(
                 kind="copy_file",
                 source_path=str(path),
                 target_path=str(target_path),
-                origin="source",
+                origin=donor_origin,
                 reason="archive missing artifact slot",
                 status="planned" if dry_run else "applied",
+                file_size_bytes=path.stat().st_size if path.exists() else None,
             )
         )
         existing_keys.add(key)
@@ -462,7 +496,7 @@ def merge_missing_sidecars(
                     kind="skip_file",
                     source_path=str(path),
                     target_path=None,
-                    origin="source",
+                    origin=donor_origin,
                     reason="archive already has that metadata sidecar",
                     status="skipped",
                 )
@@ -475,7 +509,7 @@ def merge_missing_sidecars(
                     kind="skip_file",
                     source_path=str(path),
                     target_path=str(target_path),
-                    origin="source",
+                    origin=donor_origin,
                     reason="target path already exists",
                     status="blocked",
                 )
@@ -486,7 +520,7 @@ def merge_missing_sidecars(
                 kind="copy_file",
                 source_path=str(path),
                 target_path=str(target_path),
-                origin="source",
+                origin=donor_origin,
                 reason="archive missing metadata sidecar",
                 status="planned" if dry_run else "applied",
             )
@@ -494,6 +528,58 @@ def merge_missing_sidecars(
         existing_metadata_suffixes.add(suffix)
         if not dry_run:
             target.directory.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target_path)
+
+    # Merge live chat files into live-chats/ subdirectory
+    existing_live_chats = {
+        _suffix_fragment(path, target.stem).lower()
+        for path in target.files
+        if _is_live_chat(path)
+    }
+    for path in sorted(donor.files):
+        if not _is_live_chat(path):
+            continue
+        if not path.exists():
+            continue
+        suffix = _suffix_fragment(path, donor.stem).lower()
+        if suffix in existing_live_chats:
+            operations.append(
+                DedupeOperation(
+                    kind="skip_file",
+                    source_path=str(path),
+                    target_path=None,
+                    origin=donor_origin,
+                    reason="archive already has that live chat",
+                    status="skipped",
+                )
+            )
+            continue
+        target_path = _live_chat_target(target.directory, target.stem, _suffix_fragment(path, donor.stem))
+        if target_path.exists():
+            operations.append(
+                DedupeOperation(
+                    kind="skip_file",
+                    source_path=str(path),
+                    target_path=str(target_path),
+                    origin=donor_origin,
+                    reason="target path already exists",
+                    status="blocked",
+                )
+            )
+            continue
+        operations.append(
+            DedupeOperation(
+                kind="copy_file",
+                source_path=str(path),
+                target_path=str(target_path),
+                origin=donor_origin,
+                reason="archive missing live chat",
+                status="planned" if dry_run else "applied",
+            )
+        )
+        existing_live_chats.add(suffix)
+        if not dry_run:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, target_path)
 
     if operations and not dry_run:
@@ -507,16 +593,18 @@ def _canonical_rename_conflicts(
     *,
     preexisting_targets: set[str],
     planned_targets: set[str],
+    dry_run: bool = False,
 ) -> str | None:
     if canonical_stem == group.stem:
         return None
     for artifact in group.files:
         target = group.directory / f"{canonical_stem}{_suffix_fragment(artifact, group.stem)}"
-        if target.exists():
-            if str(target) in planned_targets:
-                return "blocked_prior_operation"
-            if str(target) in preexisting_targets:
-                return "blocked_preexisting_target"
+        target_str = str(target)
+        if target_str in planned_targets:
+            return "blocked_prior_operation"
+        if target_str in preexisting_targets:
+            return "blocked_preexisting_target"
+        if not dry_run and target.exists():
             return "blocked_preexisting_target"
     return None
 
@@ -551,6 +639,7 @@ def rename_group_canonical(
         canonical_stem,
         preexisting_targets=preexisting_targets,
         planned_targets=planned_targets,
+        dry_run=dry_run,
     )
     if conflict_reason is not None:
         return None, DedupeOperation(
@@ -576,6 +665,10 @@ def rename_group_canonical(
     result = rename_stem_artifacts(group.directory, group.stem, canonical_stem)
     if result.status != "renamed":
         return None, None
+    # Also rename live chat files in live-chats/ subdir if present
+    live_chats_dir = group.directory / "live-chats"
+    if live_chats_dir.is_dir():
+        rename_stem_artifacts(live_chats_dir, group.stem, canonical_stem)
     group.stem = canonical_stem
     _refresh_group_files(group)
     _register_group_paths(group, planned_targets)
@@ -672,6 +765,11 @@ def _build_group_from_paths(
     return group
 
 
+def _live_chat_target(base_directory: Path, target_stem: str, suffix_fragment: str) -> Path:
+    """Route a live chat file to the live-chats/ subdirectory."""
+    return base_directory / "live-chats" / f"{target_stem}{suffix_fragment}"
+
+
 def materialize_source_group(
     source: StemGroup,
     *,
@@ -692,13 +790,17 @@ def materialize_source_group(
             else _is_importable_artifact(path)
         )
     ]
-    target_files = [
-        target_directory / f"{target_stem}{_suffix_fragment(path, source.stem)}"
-        for path in importable_files
-    ]
+    target_files = []
+    for path in importable_files:
+        suffix_frag = _suffix_fragment(path, source.stem)
+        if _is_live_chat(path):
+            target_files.append(_live_chat_target(target_directory, target_stem, suffix_frag))
+        else:
+            target_files.append(target_directory / f"{target_stem}{suffix_frag}")
     if not dry_run:
         target_directory.mkdir(parents=True, exist_ok=True)
         for path, target in zip(importable_files, target_files, strict=True):
+            target.parent.mkdir(parents=True, exist_ok=True)
             if target.exists():
                 raise RuntimeError(f"Archive target already exists: {target}")
             shutil.move(str(path), str(target))
@@ -755,7 +857,7 @@ def _replace_archive_group(
     temp_archived: StemGroup | None = None
 
     if dry_run:
-        importable_files = [path for path in sorted(source.files) if _is_importable_artifact(path)]
+        video_files = [path for path in sorted(source.files) if _artifact_category(path) == "video"]
         final_group = _build_group_from_paths(
             root=archive_root,
             directory=destination.directory,
@@ -763,9 +865,9 @@ def _replace_archive_group(
             stem=destination.stem,
             files=[
                 destination.directory / f"{destination.stem}{_suffix_fragment(path, source.stem)}"
-                for path in importable_files
+                for path in video_files
             ],
-            template=source,
+            template=destination,
         )
         temp_archived = _build_group_from_paths(
             root=archive_root,
@@ -799,12 +901,23 @@ def _replace_archive_group(
         path.stat().st_size for path in temp_archived.files if path.exists()
     )
 
-    final_group = materialize_source_group(
-        source,
-        archive_root=archive_root,
-        target_parent=destination.relative_parent,
-        target_stem=destination.stem,
-        dry_run=False,
+    # Only move video files; images and sidecars are restored from temp_archived via merge
+    destination.directory.mkdir(parents=True, exist_ok=True)
+    video_files = [path for path in sorted(source.files) if _artifact_category(path) == "video"]
+    target_files: list[Path] = []
+    for path in video_files:
+        target = destination.directory / f"{destination.stem}{_suffix_fragment(path, source.stem)}"
+        if target.exists():
+            raise RuntimeError(f"Archive target already exists: {target}")
+        shutil.move(str(path), str(target))
+        target_files.append(target)
+    final_group = _build_group_from_paths(
+        root=archive_root,
+        directory=destination.directory,
+        relative_parent=destination.relative_parent,
+        stem=destination.stem,
+        files=target_files,
+        template=destination,
     )
     return final_group, temp_archived
 
@@ -822,6 +935,7 @@ def _record_disposal_operations(
     for path in sorted(group.files):
         if not path.exists() and not dry_run:
             continue
+        size = path.stat().st_size if path.exists() else None
         if trash_dir is not None:
             target = _trash_target_path(
                 trash_dir,
@@ -837,6 +951,7 @@ def _record_disposal_operations(
                     origin=origin,
                     reason=reason,
                     status="planned" if dry_run else "applied",
+                    file_size_bytes=size,
                 )
             )
         elif delete:
@@ -848,6 +963,7 @@ def _record_disposal_operations(
                     origin=origin,
                     reason=reason,
                     status="planned" if dry_run else "applied",
+                    file_size_bytes=size,
                 )
             )
 
@@ -885,6 +1001,37 @@ def run_dedupe(
         "details": [],
     }
 
+    # Build secondary filename→match_key index for archives
+    archive_filename_index: dict[str, tuple[str, str]] = {}
+    for match_key, groups in archive_buckets.items():
+        for group in groups:
+            fn = _normalize_fallback_stem(group.stem)
+            if fn:
+                archive_filename_index.setdefault(fn, match_key)
+
+    # Consolidate archive buckets: merge groups with same (directory, normalized_stem)
+    archive_by_dir_stem: dict[tuple[Path, str], list[tuple[str, str]]] = {}
+    for match_key, groups in archive_buckets.items():
+        for group in groups:
+            fn = _normalize_fallback_stem(group.stem)
+            if fn:
+                dir_key = (group.relative_parent, fn)
+                archive_by_dir_stem.setdefault(dir_key, []).append(match_key)
+
+    for dir_key, match_keys in archive_by_dir_stem.items():
+        unique_keys = list(dict.fromkeys(match_keys))  # preserve order, dedupe
+        if len(unique_keys) <= 1:
+            continue
+        # Merge all into the first key (prefer video_id key)
+        primary_key = next((k for k in unique_keys if k[0] == "video_id"), unique_keys[0])
+        for secondary_key in unique_keys:
+            if secondary_key == primary_key:
+                continue
+            if secondary_key in archive_buckets:
+                archive_buckets.setdefault(primary_key, []).extend(archive_buckets.pop(secondary_key))
+        # Update filename index to point to primary
+        archive_filename_index[dir_key[1]] = primary_key
+
     for groups in archive_buckets.values():
         for group in groups:
             _register_group_paths(group, preexisting_targets)
@@ -894,6 +1041,17 @@ def run_dedupe(
         if match_key in archive_buckets:
             source_buckets[match_key] = list(groups)
             continue
+        # Fallback: try normalized filename match against archive for ALL stems
+        matched_archive_key = None
+        for group in groups:
+            fn = _normalize_fallback_stem(group.stem)
+            if fn and fn in archive_filename_index:
+                matched_archive_key = archive_filename_index[fn]
+                break
+        if matched_archive_key:
+            source_buckets.setdefault(matched_archive_key, []).extend(groups)
+            continue
+        # Truly source-only
         for group in groups:
             source_only_canonical.setdefault(
                 _canonical_target_key(group, archive_dir=archive_dir, config=config), []
@@ -934,6 +1092,7 @@ def run_dedupe(
                                 origin="source",
                                 reason=skip_reason,
                                 status="skipped",
+                                file_size_bytes=path.stat().st_size if path.exists() else None,
                             )
                         )
                     )
@@ -984,20 +1143,13 @@ def run_dedupe(
             final_group = destination
             staged_archive: StemGroup | None = None
 
-            if best_source.total_size > destination.total_size:
+            if _largest_video_size(best_source) > _largest_video_size(destination):
                 detail["action"] = "replace_archive"
                 detail["archive_replaced"] = True
-                planned_group = _planned_materialized_group(
-                    best_source,
-                    archive_root=archive_dir,
-                    target_parent=destination.relative_parent,
-                    target_stem=destination.stem,
-                )
-                for source_path, target_path in zip(
-                    [path for path in sorted(best_source.files) if _is_importable_artifact(path)],
-                    planned_group.files,
-                    strict=True,
-                ):
+                for source_path in sorted(best_source.files):
+                    if _artifact_category(source_path) != "video":
+                        continue
+                    target_path = destination.directory / f"{destination.stem}{_suffix_fragment(source_path, best_source.stem)}"
                     detail["operations"].append(
                         _operation_dict(
                             DedupeOperation(
@@ -1007,6 +1159,7 @@ def run_dedupe(
                                 origin="source",
                                 reason="source file selected over weaker archive file",
                                 status="planned" if dry_run else "applied",
+                                file_size_bytes=source_path.stat().st_size if source_path.exists() else None,
                             )
                         )
                     )
@@ -1032,6 +1185,7 @@ def run_dedupe(
                                     origin="archive",
                                     reason="archive copy already preferred",
                                     status="kept",
+                                    file_size_bytes=path.stat().st_size if path.exists() else None,
                                 )
                             )
                         )
@@ -1041,12 +1195,21 @@ def run_dedupe(
             if staged_archive is not None:
                 donors.append(("archive", staged_archive))
             donors.extend(("archive", group) for group in extra_archives)
-            donors.extend(("source", group) for group in sources)
+            if detail["archive_replaced"]:
+                # best_source video already handled by replace_file;
+                # merge its non-video artifacts separately below
+                donors.extend(("source", group) for group in sources if group is not best_source)
+            else:
+                donors.extend(("source", group) for group in sources)
 
             for _origin, donor in donors:
-                merge_ops = merge_missing_sidecars(final_group, donor, dry_run=dry_run)
+                merge_ops = merge_missing_sidecars(final_group, donor, dry_run=dry_run, donor_origin=_origin)
                 detail["operations"].extend(_operation_dict(op) for op in merge_ops)
                 summary["sidecars_copied"] += sum(1 for op in merge_ops if op.kind == "copy_file")
+                # Track planned targets so subsequent merges see them
+                for op in merge_ops:
+                    if op.kind == "copy_file" and op.target_path:
+                        final_group.files.append(Path(op.target_path))
                 if _origin == "source":
                     detail["operations"].extend(
                         _operation_dict(op)
@@ -1056,26 +1219,27 @@ def run_dedupe(
                         )
                     )
 
-            original_stem = final_group.stem
-            renamed_to, rename_op = rename_group_canonical(
-                final_group,
-                config,
-                dry_run=dry_run,
-                preexisting_targets=preexisting_targets,
-                planned_targets=planned_targets,
-            )
-            if renamed_to and renamed_to != original_stem:
-                detail["renamed_to"] = str(final_group.directory / renamed_to)
-                summary["archive_winners_renamed"] += 1
-                if rename_op is not None:
-                    detail["operations"].append(_operation_dict(rename_op))
-            elif final_group.canonical_stem and final_group.canonical_stem != original_stem:
-                detail["rename_blocked"] = True
-                summary["rename_blocked_sets"] += 1
-                if rename_op is not None:
-                    detail["operations"].append(_operation_dict(rename_op))
+            if detail["archive_replaced"]:
+                merge_ops = merge_missing_sidecars(final_group, best_source, dry_run=dry_run, donor_origin="source")
+                # Filter out video-related ops (already handled by replace_file)
+                for op in merge_ops:
+                    if op.source_path and _artifact_category(Path(op.source_path)) == "video":
+                        continue
+                    detail["operations"].append(_operation_dict(op))
+                    if op.kind == "copy_file":
+                        summary["sidecars_copied"] += 1
+                        if op.target_path:
+                            final_group.files.append(Path(op.target_path))
 
+            # Propagate metadata from source if archive had none
+            if final_group.canonical_metadata is None and best_source.canonical_metadata:
+                final_group.canonical_metadata = best_source.canonical_metadata
+                final_group.canonical_video_url = best_source.canonical_video_url
+
+            # Dispose extra archives first so their paths don't block rename
             for group in extra_archives:
+                for path in group.files:
+                    preexisting_targets.discard(str(path))
                 disposal_ops: list[DedupeOperation] = []
                 _record_disposal_operations(
                     disposal_ops,
@@ -1095,7 +1259,11 @@ def run_dedupe(
                     origin="archive",
                 )
                 summary["archive_groups_disposed"] += 1
+
+            # Dispose staged archive (replaced original) before rename
             if staged_archive is not None:
+                for path in staged_archive.files:
+                    preexisting_targets.discard(str(path))
                 disposal_ops = []
                 _record_disposal_operations(
                     disposal_ops,
@@ -1116,8 +1284,37 @@ def run_dedupe(
                 )
                 summary["archive_groups_disposed"] += 1
 
+            # Dispose source groups
             for group in sources:
-                if detail["archive_replaced"] and group is best_source and not dry_run:
+                if detail["archive_replaced"] and group is best_source:
+                    # Video files were already moved by _replace_archive_group.
+                    # Dispose remaining non-video files (jpg, nfo, etc.)
+                    remaining_files = [
+                        p for p in group.files
+                        if (p.exists() or dry_run) and _artifact_category(p) != "video"
+                    ]
+                    if remaining_files:
+                        remaining_group = StemGroup(
+                            root=group.root,
+                            directory=group.directory,
+                            relative_parent=group.relative_parent,
+                            stem=group.stem,
+                            files=remaining_files,
+                            video_id=group.video_id,
+                            total_size=0,
+                        )
+                        disposal_ops = []
+                        _record_disposal_operations(
+                            disposal_ops, remaining_group,
+                            trash_dir=trash_dir, delete=delete, dry_run=dry_run,
+                            origin="source", reason="source artifact set reconciled into archive",
+                        )
+                        detail["operations"].extend(_operation_dict(op) for op in disposal_ops)
+                        dispose_group(
+                            remaining_group,
+                            trash_dir=trash_dir, delete=delete, dry_run=dry_run, origin="source",
+                        )
+                    summary["source_groups_disposed"] += 1
                     continue
                 disposal_ops = []
                 _record_disposal_operations(
@@ -1127,11 +1324,7 @@ def run_dedupe(
                     delete=delete,
                     dry_run=dry_run,
                     origin="source",
-                    reason=(
-                        "source file materialized into archive"
-                        if detail["archive_replaced"] and group is best_source
-                        else "source artifact set reconciled into archive"
-                    ),
+                    reason="source artifact set reconciled into archive",
                 )
                 detail["operations"].extend(_operation_dict(op) for op in disposal_ops)
                 dispose_group(
@@ -1142,6 +1335,31 @@ def run_dedupe(
                     origin="source",
                 )
                 summary["source_groups_disposed"] += 1
+
+            # Remove destination's own paths from preexisting_targets so rename doesn't self-block
+            for path in final_group.files:
+                preexisting_targets.discard(str(path))
+
+            # Canonical rename runs after all disposals
+            original_stem = final_group.stem
+            renamed_to, rename_op = rename_group_canonical(
+                final_group,
+                config,
+                dry_run=dry_run,
+                preexisting_targets=preexisting_targets,
+                planned_targets=planned_targets,
+            )
+            if renamed_to and renamed_to != original_stem:
+                detail["renamed_to"] = str(final_group.directory / renamed_to)
+                summary["archive_winners_renamed"] += 1
+                if rename_op is not None:
+                    detail["operations"].append(_operation_dict(rename_op))
+            elif final_group.canonical_stem and final_group.canonical_stem != original_stem:
+                detail["rename_blocked"] = True
+                detail["canonical_stem"] = final_group.canonical_stem
+                summary["rename_blocked_sets"] += 1
+                if rename_op is not None:
+                    detail["operations"].append(_operation_dict(rename_op))
         else:
             detail["action"] = "import"
             target_parent = best_source.relative_parent
@@ -1168,6 +1386,7 @@ def run_dedupe(
                             origin="source",
                             reason="source-only video imported into archive",
                             status="planned" if dry_run else "applied",
+                            file_size_bytes=source_path.stat().st_size if source_path.exists() else None,
                         )
                     )
                 )
@@ -1187,6 +1406,9 @@ def run_dedupe(
                 merge_ops = merge_missing_sidecars(final_group, group, dry_run=dry_run)
                 detail["operations"].extend(_operation_dict(op) for op in merge_ops)
                 summary["sidecars_copied"] += sum(1 for op in merge_ops if op.kind == "copy_file")
+                for op in merge_ops:
+                    if op.kind == "copy_file" and op.target_path:
+                        final_group.files.append(Path(op.target_path))
                 detail["operations"].extend(
                     _operation_dict(op)
                     for op in _describe_source_skips(
@@ -1211,6 +1433,7 @@ def run_dedupe(
                     detail["operations"].append(_operation_dict(rename_op))
             elif final_group.canonical_stem and final_group.canonical_stem != original_stem:
                 detail["rename_blocked"] = True
+                detail["canonical_stem"] = final_group.canonical_stem
                 summary["rename_blocked_sets"] += 1
                 if rename_op is not None:
                     detail["operations"].append(_operation_dict(rename_op))
@@ -1235,6 +1458,87 @@ def run_dedupe(
                     origin="source",
                 )
                 summary["source_groups_disposed"] += 1
+        summary["processed_sets"] += 1
+        detail["operations"] = [
+            _operation_dict(op) for op in _sort_operations(
+                [DedupeOperation(**op) for op in detail["operations"]]
+            )
+        ]
+        summary["details"].append(detail)
+
+    # Archive-only consolidation: dispose undated duplicates that share a
+    # normalized filename with another archive group in the same directory.
+    processed_archive_keys = set(source_buckets.keys())
+    for match_key, groups in archive_buckets.items():
+        if match_key in processed_archive_keys:
+            continue
+        if len(groups) <= 1:
+            continue
+        destination = select_archive_destination(groups)
+        extra_archives = [g for g in groups if g is not destination]
+        if not extra_archives:
+            continue
+
+        detail: dict[str, Any] = {
+            "match_method": match_key[0],
+            "match_key": match_key[1],
+            "action": "archive_consolidate",
+            "archive_destination": str(destination.directory / destination.stem),
+            "source_origin": None,
+            "archive_replaced": False,
+            "renamed_to": None,
+            "rename_blocked": False,
+            "operations": [],
+        }
+
+        # Merge sidecars from extras into destination
+        for group in extra_archives:
+            merge_ops = merge_missing_sidecars(
+                destination, group, dry_run=dry_run, donor_origin="archive",
+            )
+            detail["operations"].extend(_operation_dict(op) for op in merge_ops)
+            summary["sidecars_copied"] += sum(1 for op in merge_ops if op.kind == "copy_file")
+
+        # Dispose extra archive groups
+        for group in extra_archives:
+            for path in group.files:
+                preexisting_targets.discard(str(path))
+            disposal_ops: list[DedupeOperation] = []
+            _record_disposal_operations(
+                disposal_ops, group,
+                trash_dir=trash_dir, delete=delete, dry_run=dry_run,
+                origin="archive", reason="undated archive duplicate consolidated",
+            )
+            detail["operations"].extend(_operation_dict(op) for op in disposal_ops)
+            dispose_group(
+                group, trash_dir=trash_dir, delete=delete, dry_run=dry_run, origin="archive",
+            )
+            summary["archive_groups_disposed"] += 1
+
+        # Remove destination's own paths before rename
+        for path in destination.files:
+            preexisting_targets.discard(str(path))
+
+        # Try canonical rename
+        original_stem = destination.stem
+        renamed_to, rename_op = rename_group_canonical(
+            destination, config,
+            dry_run=dry_run,
+            preexisting_targets=preexisting_targets,
+            planned_targets=planned_targets,
+        )
+        if renamed_to and renamed_to != original_stem:
+            detail["renamed_to"] = str(destination.directory / renamed_to)
+            summary["archive_winners_renamed"] += 1
+            if rename_op is not None:
+                detail["operations"].append(_operation_dict(rename_op))
+        elif destination.canonical_stem and destination.canonical_stem != original_stem:
+            detail["rename_blocked"] = True
+            detail["canonical_stem"] = destination.canonical_stem
+            summary["rename_blocked_sets"] += 1
+            if rename_op is not None:
+                detail["operations"].append(_operation_dict(rename_op))
+
         summary["processed_sets"] += 1
         detail["operations"] = [
             _operation_dict(op) for op in _sort_operations(
