@@ -51,5 +51,3 @@ src/ytdl_archiver/setup/bin/ytdl-archiver-setup-tui*
 /.tmp/
 .aider*
 
-# uv
-uv.lock
